@@ -85,6 +85,10 @@ GET  /api/device/commands
 GET  /api/history
 POST /api/yolo/detect
 POST /api/face/access
+GET  /api/face/users
+POST /api/face/users
+POST /api/face/users/<id>/images
+GET  /api/face/gallery
 ```
 
 没有真实硬件时，可以用模拟脚本测试 Orange Pi AIpro 20T 数据上报：

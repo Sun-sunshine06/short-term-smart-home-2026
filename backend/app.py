@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +22,7 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DEFAULT_DB_PATH = DATA_DIR / "smart_home.db"
+DEFAULT_FACE_GALLERY_DIR = BASE_DIR.parent / "training" / "face_gallery"
 
 
 ORANGE_PI_AIPRO_20T_PROFILE = {
@@ -46,6 +49,10 @@ def get_db_path() -> Path:
     return Path(os.environ.get("SMART_HOME_DB", DEFAULT_DB_PATH))
 
 
+def get_face_gallery_dir() -> Path:
+    return Path(os.environ.get("FACE_GALLERY_DIR", DEFAULT_FACE_GALLERY_DIR))
+
+
 def connect_db() -> sqlite3.Connection:
     db_path = get_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -58,7 +65,17 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
     result = dict(row)
-    for key in ("door_open", "window_open", "fan_on", "lock_open", "camera_online", "hardware_online", "matched"):
+    for key in (
+        "door_open",
+        "window_open",
+        "fan_on",
+        "lock_open",
+        "camera_online",
+        "hardware_online",
+        "matched",
+        "active",
+        "copied",
+    ):
         if key in result and result[key] is not None:
             result[key] = bool(result[key])
     for key in (
@@ -154,10 +171,24 @@ def init_db() -> None:
 
             CREATE TABLE IF NOT EXISTS authorized_users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                identity TEXT,
                 name TEXT NOT NULL,
                 image_path TEXT,
                 encoding_path TEXT,
+                active INTEGER NOT NULL DEFAULT 1,
+                updated_at TEXT,
                 created_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS face_gallery_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                image_path TEXT NOT NULL,
+                original_image_path TEXT,
+                copied INTEGER NOT NULL DEFAULT 0,
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(user_id) REFERENCES authorized_users(id)
             );
 
             CREATE TABLE IF NOT EXISTS access_logs (
@@ -187,6 +218,9 @@ def init_db() -> None:
         )
         ensure_column(conn, "detection_records", "model_name", "TEXT")
         ensure_column(conn, "detection_records", "model_weights", "TEXT")
+        ensure_column(conn, "authorized_users", "identity", "TEXT")
+        ensure_column(conn, "authorized_users", "active", "INTEGER NOT NULL DEFAULT 1")
+        ensure_column(conn, "authorized_users", "updated_at", "TEXT")
         ensure_column(conn, "access_logs", "matched", "INTEGER")
         ensure_column(conn, "access_logs", "user_id", "TEXT")
         ensure_column(conn, "access_logs", "score", "REAL")
@@ -254,6 +288,67 @@ def parse_int(value: Any, default: int | None = None) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def make_identity(value: str) -> str:
+    identity = re.sub(r"[^0-9A-Za-z_\-]+", "_", value.strip()).strip("_").lower()
+    return identity or "user"
+
+
+def unique_identity(conn: sqlite3.Connection, preferred: str) -> str:
+    base = make_identity(preferred)
+    identity = base
+    index = 2
+    while conn.execute("SELECT id FROM authorized_users WHERE identity = ?", (identity,)).fetchone():
+        identity = f"{base}_{index}"
+        index += 1
+    return identity
+
+
+def add_gallery_image(
+    conn: sqlite3.Connection,
+    user: sqlite3.Row,
+    image_path: str,
+    raw_payload: dict[str, Any],
+    copy_to_gallery: bool = True,
+) -> sqlite3.Row:
+    source_path = Path(image_path)
+    final_path = source_path
+    copied = 0
+    if copy_to_gallery and source_path.exists():
+        identity = user["identity"] or f"user_{user['id']:03d}"
+        target_dir = get_face_gallery_dir() / identity
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target_path = target_dir / source_path.name
+        if source_path.resolve() != target_path.resolve():
+            shutil.copy2(source_path, target_path)
+        final_path = target_path
+        copied = 1
+
+    cursor = conn.execute(
+        """
+        INSERT INTO face_gallery_images
+            (user_id, image_path, original_image_path, copied, raw_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            user["id"],
+            str(final_path),
+            image_path,
+            copied,
+            json.dumps(raw_payload, ensure_ascii=False),
+            utc_now(),
+        ),
+    )
+    conn.execute(
+        """
+        UPDATE authorized_users
+        SET image_path = COALESCE(image_path, ?), updated_at = ?
+        WHERE id = ?
+        """,
+        (str(final_path), utc_now(), user["id"]),
+    )
+    return conn.execute("SELECT * FROM face_gallery_images WHERE id = ?", (cursor.lastrowid,)).fetchone()
 
 
 def create_app() -> Flask:
@@ -494,6 +589,125 @@ def create_app() -> Flask:
         with connect_db() as conn:
             rows = conn.execute("SELECT * FROM detection_records ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return jsonify({"ok": True, "records": [row_to_dict(row) for row in rows]})
+
+    @app.get("/api/face/users")
+    def face_users():
+        with connect_db() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    u.*,
+                    COUNT(i.id) AS image_count
+                FROM authorized_users u
+                LEFT JOIN face_gallery_images i ON i.user_id = u.id
+                GROUP BY u.id
+                ORDER BY u.id DESC
+                """
+            ).fetchall()
+        return jsonify({"ok": True, "users": [row_to_dict(row) for row in rows]})
+
+    @app.post("/api/face/users")
+    def create_face_user():
+        payload = request.get_json(silent=True) or {}
+        name = str(payload.get("name", "")).strip()
+        if not name:
+            return jsonify({"ok": False, "error": "name is required"}), 400
+
+        with connect_db() as conn:
+            identity = payload.get("identity")
+            identity = make_identity(str(identity)) if identity else unique_identity(conn, name)
+            existing = conn.execute("SELECT id FROM authorized_users WHERE identity = ?", (identity,)).fetchone()
+            if existing is not None:
+                return jsonify({"ok": False, "error": "identity already exists"}), 409
+            now = utc_now()
+            cursor = conn.execute(
+                """
+                INSERT INTO authorized_users
+                    (identity, name, image_path, encoding_path, active, updated_at, created_at)
+                VALUES (?, ?, ?, ?, 1, ?, ?)
+                """,
+                (identity, name, None, payload.get("encoding_path"), now, now),
+            )
+            user = conn.execute("SELECT * FROM authorized_users WHERE id = ?", (cursor.lastrowid,)).fetchone()
+            image = None
+            if payload.get("image_path"):
+                image = add_gallery_image(
+                    conn,
+                    user,
+                    str(payload["image_path"]),
+                    payload,
+                    copy_to_gallery=parse_bool(payload.get("copy_to_gallery")) != 0,
+                )
+            conn.commit()
+            user = conn.execute("SELECT * FROM authorized_users WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        return jsonify({"ok": True, "user": row_to_dict(user), "image": row_to_dict(image)}), 201
+
+    @app.get("/api/face/users/<int:user_id>")
+    def face_user_detail(user_id: int):
+        with connect_db() as conn:
+            user = conn.execute("SELECT * FROM authorized_users WHERE id = ?", (user_id,)).fetchone()
+            if user is None:
+                return jsonify({"ok": False, "error": "user not found"}), 404
+            images = conn.execute(
+                "SELECT * FROM face_gallery_images WHERE user_id = ? ORDER BY id DESC",
+                (user_id,),
+            ).fetchall()
+        return jsonify({"ok": True, "user": row_to_dict(user), "images": [row_to_dict(row) for row in images]})
+
+    @app.post("/api/face/users/<int:user_id>/images")
+    def add_face_user_image(user_id: int):
+        payload = request.get_json(silent=True) or {}
+        image_path = str(payload.get("image_path", "")).strip()
+        if not image_path:
+            return jsonify({"ok": False, "error": "image_path is required"}), 400
+
+        with connect_db() as conn:
+            user = conn.execute("SELECT * FROM authorized_users WHERE id = ?", (user_id,)).fetchone()
+            if user is None:
+                return jsonify({"ok": False, "error": "user not found"}), 404
+            image = add_gallery_image(
+                conn,
+                user,
+                image_path,
+                payload,
+                copy_to_gallery=parse_bool(payload.get("copy_to_gallery")) != 0,
+            )
+            conn.commit()
+        return jsonify({"ok": True, "image": row_to_dict(image)}), 201
+
+    @app.get("/api/face/gallery")
+    def face_gallery():
+        with connect_db() as conn:
+            users = conn.execute(
+                """
+                SELECT
+                    u.id,
+                    u.identity,
+                    u.name,
+                    u.active,
+                    COUNT(i.id) AS image_count
+                FROM authorized_users u
+                LEFT JOIN face_gallery_images i ON i.user_id = u.id
+                GROUP BY u.id
+                ORDER BY u.identity ASC
+                """
+            ).fetchall()
+            images = conn.execute(
+                """
+                SELECT i.*, u.identity, u.name
+                FROM face_gallery_images i
+                JOIN authorized_users u ON u.id = i.user_id
+                ORDER BY u.identity ASC, i.id ASC
+                """
+            ).fetchall()
+        return jsonify(
+            {
+                "ok": True,
+                "gallery_dir": str(get_face_gallery_dir()),
+                "users": [row_to_dict(row) for row in users],
+                "images": [row_to_dict(row) for row in images],
+            }
+        )
 
     @app.post("/api/face/access")
     @app.post("/api/face/verify")
