@@ -9,6 +9,13 @@ from typing import Any
 
 from flask import Flask, jsonify, request
 
+try:
+    from vision.face_adapter import verify_face
+    from vision.yolo_adapter import detect_image
+except ImportError:
+    from backend.vision.face_adapter import verify_face
+    from backend.vision.yolo_adapter import detect_image
+
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -51,16 +58,22 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     if row is None:
         return None
     result = dict(row)
-    for key in ("door_open", "window_open", "fan_on", "lock_open", "camera_online", "hardware_online"):
+    for key in ("door_open", "window_open", "fan_on", "lock_open", "camera_online", "hardware_online", "matched"):
         if key in result and result[key] is not None:
             result[key] = bool(result[key])
-    for key in ("labels", "detections", "raw_result_json", "spec_json"):
+    for key in ("labels", "detections", "raw_result_json", "spec_json", "bbox", "landmarks_5"):
         if key in result and isinstance(result[key], str):
             try:
                 result[key] = json.loads(result[key])
             except json.JSONDecodeError:
                 pass
     return result
+
+
+def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
 def init_db() -> None:
@@ -118,6 +131,8 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 image_path TEXT,
                 result_image_path TEXT,
+                model_name TEXT,
+                model_weights TEXT,
                 labels TEXT NOT NULL DEFAULT '[]',
                 confidence REAL,
                 detections TEXT NOT NULL DEFAULT '[]',
@@ -137,12 +152,24 @@ def init_db() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_name TEXT,
                 result TEXT NOT NULL,
+                matched INTEGER,
+                score REAL,
+                threshold REAL,
+                bbox TEXT,
+                landmarks_5 TEXT,
                 image_path TEXT,
                 raw_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL
             );
             """
         )
+        ensure_column(conn, "detection_records", "model_name", "TEXT")
+        ensure_column(conn, "detection_records", "model_weights", "TEXT")
+        ensure_column(conn, "access_logs", "matched", "INTEGER")
+        ensure_column(conn, "access_logs", "score", "REAL")
+        ensure_column(conn, "access_logs", "threshold", "REAL")
+        ensure_column(conn, "access_logs", "bbox", "TEXT")
+        ensure_column(conn, "access_logs", "landmarks_5", "TEXT")
 
         existing_profile = conn.execute("SELECT id FROM hardware_profiles LIMIT 1").fetchone()
         if existing_profile is None:
@@ -375,30 +402,43 @@ def create_app() -> Flask:
     @app.post("/api/yolo/detect")
     def yolo_detect():
         payload = request.get_json(silent=True) or {}
-        detections = payload.get("detections", [])
+        image_path = payload.get("image_path")
+        adapter_result: dict[str, Any] = {}
+
+        if image_path and "detections" not in payload:
+            try:
+                adapter_result = detect_image(str(image_path))
+            except Exception as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 500
+
+        merged = {**payload, **adapter_result}
+        detections = merged.get("detections", [])
         labels = payload.get("labels")
         if labels is None:
             labels = [item.get("label") for item in detections if isinstance(item, dict) and item.get("label")]
-        confidence = payload.get("confidence")
+        confidence = merged.get("confidence")
         if confidence is None and detections:
             confidences = [item.get("confidence") for item in detections if isinstance(item, dict) and item.get("confidence") is not None]
             confidence = max(confidences) if confidences else None
+        model = merged.get("model") if isinstance(merged.get("model"), dict) else {}
 
         with connect_db() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO detection_records
-                    (image_path, result_image_path, labels, confidence,
+                    (image_path, result_image_path, model_name, model_weights, labels, confidence,
                      detections, raw_result_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    payload.get("image_path"),
-                    payload.get("result_image_path"),
+                    merged.get("image_path") or image_path,
+                    merged.get("result_image_path"),
+                    model.get("name"),
+                    model.get("weights"),
                     json.dumps(labels or [], ensure_ascii=False),
                     confidence,
                     json.dumps(detections or [], ensure_ascii=False),
-                    json.dumps(payload, ensure_ascii=False),
+                    json.dumps(merged, ensure_ascii=False),
                     utc_now(),
                 ),
             )
@@ -420,20 +460,42 @@ def create_app() -> Flask:
         return jsonify({"ok": True, "records": [row_to_dict(row) for row in rows]})
 
     @app.post("/api/face/access")
+    @app.post("/api/face/verify")
     def face_access():
         payload = request.get_json(silent=True) or {}
-        result = payload.get("result") or ("granted" if payload.get("granted") else "denied")
+        image_path = payload.get("image_path")
+        adapter_result: dict[str, Any] = {}
+
+        if image_path and "matched" not in payload and "granted" not in payload and "result" not in payload:
+            try:
+                adapter_result = verify_face(str(image_path))
+            except Exception as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 500
+
+        merged = {**payload, **adapter_result}
+        matched = merged.get("matched")
+        if matched is None:
+            matched = bool(merged.get("granted"))
+        result = merged.get("result") or ("granted" if matched else "denied")
+        user_name = merged.get("user_name") or merged.get("name")
         with connect_db() as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO access_logs (user_name, result, image_path, raw_json, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO access_logs
+                    (user_name, result, matched, score, threshold, bbox,
+                     landmarks_5, image_path, raw_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    payload.get("user_name"),
+                    user_name,
                     result,
-                    payload.get("image_path"),
-                    json.dumps(payload, ensure_ascii=False),
+                    int(bool(matched)),
+                    merged.get("score"),
+                    merged.get("threshold"),
+                    json.dumps(merged.get("bbox"), ensure_ascii=False) if merged.get("bbox") is not None else None,
+                    json.dumps(merged.get("landmarks_5"), ensure_ascii=False) if merged.get("landmarks_5") is not None else None,
+                    image_path,
+                    json.dumps(merged, ensure_ascii=False),
                     utc_now(),
                 ),
             )

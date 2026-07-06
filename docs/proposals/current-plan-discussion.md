@@ -8,8 +8,8 @@
 - 后端和算法服务先运行在 **性能较稳定的游戏本/本地电脑** 上。
 - 前端使用 **Web GUI**，演示时可通过域名 `wudilyy666.top` 访问；如果网络配置不稳定，保留局域网 IP 或本机访问作为备用。
 - Orange Pi AIpro 20T 与后端通信先走 **HTTP**，不把 MQTT 作为第一版必做项。
-- YOLO 优先接入组内已经训练好的模型；预训练模型作为备用方案。
-- 人脸识别优先使用 `face_recognition + OpenCV`；如果环境安装困难，则降级到 OpenCV LBPH 或其他更容易演示的方案。
+- YOLO 优先接入视觉组已经训练好的模型；预训练模型作为备用方案。
+- 人脸识别门禁改为预留 **InsightFace buffalo_l** 方案，不再用 YOLO 做人脸门禁；若环境集成困难，再降级为更简单的演示方案。
 
 ## Orange Pi AIpro 20T 角色约定
 
@@ -129,8 +129,8 @@ POST /api/sensor/update     Orange Pi 上传传感器/模拟信号
 POST /api/device/control    前端提交控制请求
 GET  /api/device/commands   Orange Pi 轮询待执行命令
 POST /api/camera/capture    拍照并保存
-POST /api/yolo/detect       YOLO 识别
-POST /api/face/recognize    人脸识别门禁
+POST /api/yolo/detect       YOLO 物体识别
+POST /api/face/verify       InsightFace 人脸门禁
 GET  /api/history           查询历史记录
 ```
 
@@ -138,16 +138,29 @@ GET  /api/history           查询历史记录
 
 ### YOLO
 
-- 第一版：优先接入组内已经训练好的模型，做单张图片或低频识别。
+- 第一版：优先接入视觉组已经训练好的 YOLO26s 模型，做单张图片或低频识别。
 - 备用方案：如果自训练模型集成时间不够，则使用 Ultralytics 预训练模型识别人、车等常见类别。
-- 输出：原图、带框结果图、类别、置信度、时间。
-- 后端需要 YOLO 组提供模型文件、类别表、推理脚本或 `detect_image(image_path)` 函数。
+- 临时模型路径：`models/joint_noapi_yolo26s_best.pt`。
+- 正式模型建议路径：`models/yolo_object_best.pt`。
+- 模型权重不直接提交 Git，通过 Release、共享盘或网盘分发；后端通过 `MODEL_PATH` 指向本地模型。
+- 第一版输入：`image_path: str`。
+- 第一版输出：`result_image_path`、`detections`、`model`。
+- 后端需要 YOLO 组提供类别表、模型文件和 `detect_image(image_path)` 函数。
+
+当前/计划类别：
+
+```text
+临时模型：face, fire_extinguisher, drone
+正式目标：person, car, fire_extinguisher, drone，以及其他演示需要的物体类别
+```
 
 ### 人脸识别
 
 - 第一版目标：完成 2 名授权人员 + 1 名非授权人员演示。
-- 优先方案：`face_recognition + OpenCV`。
-- 降级方案：OpenCV LBPH 或更简单的拍照比对演示。
+- 优先方案：InsightFace `buffalo_l`。
+- 计划使用：SCRFD 人脸检测、5 点关键点、ArcFace 标准对齐、w600k_r50 embedding、cosine similarity 比对。
+- 默认阈值暂按 cosine similarity `0.65`，后续用实际注册照和测试照重新标定。
+- 后端预留 `verify_face(image_path)`，返回 `matched`、`name`、`score`、`threshold`、`bbox`、`landmarks_5`。
 - 识别通过后：前端显示授权通过，后端记录日志，并触发开门状态。
 - 识别失败后：前端显示未授权，门锁不打开。
 
@@ -158,8 +171,8 @@ GET  /api/history           查询历史记录
 3. Orange Pi AIpro 20T 能否按 JSON 格式走 HTTP 上报？
 4. 控制链路采用“后端主动发给 Orange Pi”还是“Orange Pi 轮询后端命令”？
 5. 摄像头最终接在哪里？
-6. YOLO 组能否提供模型文件、类别表和可被后端调用的推理接口？
-7. 人脸识别环境由谁搭，若 `face_recognition` 安装失败是否允许立刻降级？
+6. YOLO 组能否提供正式模型文件、类别表、测试图片和 `detect_image(image_path)`？
+7. 人脸识别环境由谁搭，InsightFace 注册照/阈值如何标定？
 8. GUI 需要哪些页面：只做 Dashboard，还是再加历史记录页/人员录入页？
 9. 验收时是否需要手机访问，还是电脑浏览器演示即可？
 

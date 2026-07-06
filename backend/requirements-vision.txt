@@ -1,0 +1,8 @@
+# Optional dependencies for local YOLO/InsightFace integration.
+# Install these only on the machine that runs visual inference.
+
+ultralytics>=8.4
+opencv-python>=4.9
+numpy>=1.26
+onnxruntime>=1.18
+insightface>=0.7
