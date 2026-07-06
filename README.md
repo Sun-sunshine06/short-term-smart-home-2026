@@ -6,9 +6,9 @@
 
 本仓库用于小组协作，保存项目题目、课件、研发文档、后端/前端/算法代码和可共享资料。
 
-当前分支：`test_webGUI`
+当前分支：`feature/web-gui`
 
-`test_webGUI` 分支基于 `test` 分支，专门用于开发第一版 Web GUI。当前后端使用 Flask + SQLite，并用 Orange Pi AIpro 20T 官方规格和模拟信号作为测试数据来源。
+`feature/web-gui` 分支基于 `test` 分支，专门用于开发第一版 Web GUI。当前后端使用 Flask + SQLite，并用 Orange Pi AIpro 20T 官方规格和模拟信号作为测试数据来源。
 
 ## 仓库结构
 
@@ -33,7 +33,7 @@ local/                   本地材料，默认不提交 Git
 
 - `main`：稳定资料和已确认内容。
 - `test`：后端、接口、模拟数据、前端联调等第一版开发内容。
-- `test_webGUI`：Web GUI 控制台开发分支。
+- `feature/web-gui`：Web GUI 控制台开发分支。
 
 多人协作时，建议先从 `test` 开小分支开发，确认可用后再合并回 `test`；验收前再从 `test` 合并稳定内容到 `main`。
 

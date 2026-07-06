@@ -6,7 +6,7 @@
 
 - `main`：稳定资料和最终验收版本，不直接开发。
 - `test`：主要开发和联调分支，后端、硬件、算法、前端都以这里为基础。
-- `test_webGUI`：Web GUI 控制台开发分支。
+- `feature/web-gui`：Web GUI 控制台开发分支。
 - `feature/xxx`：个人或小功能分支，从 `test` 拉出，例如 `feature/hardware-http`、`feature/yolo-api`。
 
 建议流程：

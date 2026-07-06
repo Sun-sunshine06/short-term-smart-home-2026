@@ -237,7 +237,7 @@ def create_app() -> Flask:
         return jsonify(
             {
                 "service": "smart-home-backend",
-                "branch": os.environ.get("APP_BRANCH", "test_webGUI"),
+                "branch": os.environ.get("APP_BRANCH", "feature/web-gui"),
                 "hardware_profile": "/api/hardware/profile",
                 "status": "/api/status",
                 "health": "/api/health",
