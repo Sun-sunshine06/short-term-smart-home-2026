@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Smart Home Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Orange Pi AIpro 20T</p>
+          <h1>智能家居控制台</h1>
+        </div>
+        <div class="connection" id="connectionStatus">连接中</div>
+      </header>
+
+      <section class="status-grid" aria-label="设备状态">
+        <article class="metric metric-temp">
+          <span class="metric-label">温度</span>
+          <strong id="temperature">--</strong>
+          <span class="metric-note">超过阈值后建议开启风扇</span>
+        </article>
+        <article class="metric metric-door">
+          <span class="metric-label">门</span>
+          <strong id="doorState">--</strong>
+          <span class="metric-note">门禁/舵机状态</span>
+        </article>
+        <article class="metric metric-window">
+          <span class="metric-label">窗</span>
+          <strong id="windowState">--</strong>
+          <span class="metric-note">模拟开关状态</span>
+        </article>
+        <article class="metric metric-light">
+          <span class="metric-label">灯光</span>
+          <strong id="lightLevel">--</strong>
+          <span class="metric-note">亮度 0-100</span>
+        </article>
+        <article class="metric metric-fan">
+          <span class="metric-label">风扇</span>
+          <strong id="fanState">--</strong>
+          <span class="metric-note">温控执行器</span>
+        </article>
+        <article class="metric metric-lock">
+          <span class="metric-label">门锁</span>
+          <strong id="lockState">--</strong>
+          <span class="metric-note">人脸门禁结果</span>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <section class="panel controls-panel" aria-label="设备控制">
+          <div class="panel-heading">
+            <h2>设备控制</h2>
+            <p>命令会写入队列，Orange Pi 可轮询执行。</p>
+          </div>
+          <div class="control-grid">
+            <button data-target="light" data-action="turn_on">开灯</button>
+            <button data-target="light" data-action="turn_off">关灯</button>
+            <button data-target="fan" data-action="turn_on">开风扇</button>
+            <button data-target="fan" data-action="turn_off">关风扇</button>
+            <button data-target="lock" data-action="open">开门锁</button>
+            <button data-target="lock" data-action="close">关门锁</button>
+          </div>
+          <div class="brightness-control">
+            <label class="slider-row">
+              <span>灯光亮度</span>
+              <input id="brightnessSlider" type="range" min="0" max="100" value="50" />
+              <output id="brightnessOutput">50</output>
+            </label>
+            <button class="primary" id="sendBrightness">发送亮度</button>
+          </div>
+          <p class="feedback" id="controlFeedback">等待操作</p>
+        </section>
+
+        <section class="panel vision-panel" aria-label="视觉识别">
+          <div class="panel-heading">
+            <h2>视觉识别</h2>
+            <p>当前先用 image_path 调用后端 adapter。</p>
+          </div>
+          <label class="input-row">
+            <span>图片路径</span>
+            <input id="imagePath" value="uploads/example.jpg" />
+          </label>
+          <div class="split-actions">
+            <button class="primary" id="runYolo">YOLO 识别</button>
+            <button id="runFace">人脸验证</button>
+          </div>
+          <div class="result-box">
+            <h3>最新结果</h3>
+            <pre id="visionResult">等待识别结果</pre>
+          </div>
+        </section>
+      </section>
+
+      <section class="data-row">
+        <section class="panel history-panel" aria-label="历史数据">
+          <div class="panel-heading">
+            <h2>传感器历史</h2>
+            <p>最近 8 条上报记录。</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>温度</th>
+                  <th>门</th>
+                  <th>窗</th>
+                  <th>灯光</th>
+                  <th>风扇</th>
+                </tr>
+              </thead>
+              <tbody id="historyTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel profile-panel" aria-label="硬件信息">
+          <div class="panel-heading">
+            <h2>硬件 Profile</h2>
+            <p>基于 Orange Pi AIpro 20T 官方公开规格。</p>
+          </div>
+          <dl class="profile-list" id="hardwareProfile">
+            <div><dt>设备</dt><dd>Orange Pi AIpro 20T</dd></div>
+            <div><dt>AI 算力</dt><dd>20 TOPS</dd></div>
+            <div><dt>内存</dt><dd>12GB/24GB LPDDR4X</dd></div>
+          </dl>
+        </section>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+  </body>
+</html>

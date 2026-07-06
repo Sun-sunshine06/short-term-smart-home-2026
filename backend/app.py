@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 
 try:
     from vision.face_adapter import verify_face
@@ -229,11 +229,15 @@ def create_app() -> Flask:
     init_db()
 
     @app.get("/")
+    def dashboard():
+        return render_template("dashboard.html")
+
+    @app.get("/api")
     def index():
         return jsonify(
             {
                 "service": "smart-home-backend",
-                "branch": "test",
+                "branch": os.environ.get("APP_BRANCH", "test_webGUI"),
                 "hardware_profile": "/api/hardware/profile",
                 "status": "/api/status",
                 "health": "/api/health",
