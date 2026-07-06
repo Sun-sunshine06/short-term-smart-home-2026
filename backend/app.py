@@ -61,7 +61,7 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     for key in ("door_open", "window_open", "fan_on", "lock_open", "camera_online", "hardware_online", "matched"):
         if key in result and result[key] is not None:
             result[key] = bool(result[key])
-    for key in ("labels", "detections", "raw_result_json", "spec_json", "bbox", "landmarks_5"):
+    for key in ("labels", "detections", "raw_result_json", "raw_json", "spec_json", "bbox", "landmarks_5"):
         if key in result and isinstance(result[key], str):
             try:
                 result[key] = json.loads(result[key])
