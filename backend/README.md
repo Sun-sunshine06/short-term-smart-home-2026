@@ -64,6 +64,39 @@ GET  /api/yolo/history
 POST /api/face/access
 POST /api/face/verify
 GET  /api/face/history
+GET  /api/face/users
+POST /api/face/users
+GET  /api/face/users/<id>
+POST /api/face/users/<id>/images
+GET  /api/face/gallery
+```
+
+## Example Face User Registration
+
+The first version registers existing image paths instead of handling browser file uploads. If the source file exists, it is copied to `FACE_GALLERY_DIR/<identity>/` so `training/face_service.py` can read the standard InsightFace gallery layout.
+
+```json
+{
+  "name": "Alice",
+  "identity": "user_001",
+  "image_path": "uploads/alice_001.jpg",
+  "copy_to_gallery": true
+}
+```
+
+Add another enrollment image:
+
+```json
+{
+  "image_path": "uploads/alice_002.jpg",
+  "copy_to_gallery": true
+}
+```
+
+Gallery status:
+
+```text
+GET /api/face/gallery
 ```
 
 ## Example YOLO Request

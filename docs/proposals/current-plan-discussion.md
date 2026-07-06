@@ -131,6 +131,10 @@ GET  /api/device/commands   Orange Pi 轮询待执行命令
 POST /api/camera/capture    拍照并保存
 POST /api/yolo/detect       YOLO 物体识别
 POST /api/face/verify       InsightFace 人脸门禁
+GET  /api/face/users        授权人员列表
+POST /api/face/users        新增授权人员，可附带注册照路径
+POST /api/face/users/<id>/images  给授权人员追加注册照
+GET  /api/face/gallery      查看人脸注册照目录状态
 GET  /api/history           查询历史记录
 ```
 
