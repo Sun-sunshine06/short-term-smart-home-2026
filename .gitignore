@@ -1,0 +1,10 @@
+# Local-only materials
+local/
+
+# Office temporary files
+~$*
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
