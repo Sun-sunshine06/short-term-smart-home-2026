@@ -94,6 +94,78 @@
         </section>
       </section>
 
+      <section class="face-row">
+        <section class="panel face-enroll-panel" aria-label="授权人员注册">
+          <div class="panel-heading">
+            <h2>授权人员</h2>
+            <p>注册照会进入 InsightFace gallery。</p>
+          </div>
+          <div class="form-grid">
+            <label>
+              <span>姓名</span>
+              <input id="faceUserName" placeholder="Alice" />
+            </label>
+            <label>
+              <span>身份 ID</span>
+              <input id="faceIdentity" placeholder="user_001" />
+            </label>
+            <label class="full-field">
+              <span>注册照路径</span>
+              <input id="faceImagePath" placeholder="uploads/alice_001.jpg" />
+            </label>
+          </div>
+          <div class="form-actions">
+            <label class="check-row">
+              <input id="copyToGallery" type="checkbox" checked />
+              <span>复制到 Gallery</span>
+            </label>
+            <button class="primary" id="createFaceUser">新增人员</button>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="form-grid">
+            <label>
+              <span>选择人员</span>
+              <select id="faceUserSelect"></select>
+            </label>
+            <label class="full-field">
+              <span>追加注册照</span>
+              <input id="extraFaceImagePath" placeholder="uploads/alice_002.jpg" />
+            </label>
+          </div>
+          <div class="form-actions">
+            <label class="check-row">
+              <input id="copyExtraToGallery" type="checkbox" checked />
+              <span>复制到 Gallery</span>
+            </label>
+            <button id="addFaceImage">添加注册照</button>
+          </div>
+          <p class="feedback" id="faceFeedback">等待操作</p>
+        </section>
+
+        <section class="panel face-list-panel" aria-label="授权人员列表">
+          <div class="panel-heading">
+            <h2>门禁档案</h2>
+            <p id="galleryDir">Gallery 未加载</p>
+          </div>
+          <div class="table-wrap compact-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>身份</th>
+                  <th>姓名</th>
+                  <th>注册照</th>
+                </tr>
+              </thead>
+              <tbody id="faceUsersTable"></tbody>
+            </table>
+          </div>
+          <div class="gallery-strip" id="galleryImages"></div>
+        </section>
+      </section>
+
       <section class="data-row">
         <section class="panel history-panel" aria-label="历史数据">
           <div class="panel-heading">

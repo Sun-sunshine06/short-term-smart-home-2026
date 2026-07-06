@@ -31,7 +31,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -59,7 +60,8 @@ button.primary {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible {
   outline: 3px solid rgba(0, 113, 227, 0.24);
   outline-offset: 2px;
 }
@@ -170,7 +172,8 @@ h3 {
 .metric-lock strong { color: var(--red); }
 
 .workspace,
-.data-row {
+.data-row,
+.face-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
@@ -230,7 +233,8 @@ input[type="range"] {
   width: 100%;
 }
 
-input:not([type="range"]) {
+input:not([type="range"]):not([type="checkbox"]),
+select {
   width: 100%;
   min-height: 42px;
   border: 1px solid var(--line);
@@ -238,6 +242,10 @@ input:not([type="range"]) {
   padding: 0 12px;
   background: #ffffff;
   color: var(--text);
+}
+
+select {
+  appearance: none;
 }
 
 .feedback {
@@ -253,6 +261,79 @@ input:not([type="range"]) {
 
 .result-box {
   margin-top: 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.form-grid label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.form-grid .full-field {
+  grid-column: 1 / -1;
+}
+
+.form-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
+}
+
+.divider {
+  height: 1px;
+  margin: 18px 0;
+  background: var(--line);
+}
+
+.compact-table table {
+  min-width: 420px;
+}
+
+.gallery-strip {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.gallery-item {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+}
+
+.gallery-item strong {
+  color: var(--text);
+}
+
+.gallery-item span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 pre {
@@ -322,7 +403,8 @@ th {
   }
 
   .workspace,
-  .data-row {
+  .data-row,
+  .face-row {
     grid-template-columns: 1fr;
   }
 }
@@ -357,6 +439,11 @@ th {
   }
 
   .control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-grid,
+  .form-actions {
     grid-template-columns: 1fr;
   }
 

@@ -15,6 +15,17 @@ const stateEls = {
   brightnessOutput: qs("#brightnessOutput"),
   imagePath: qs("#imagePath"),
   visionResult: qs("#visionResult"),
+  faceUserName: qs("#faceUserName"),
+  faceIdentity: qs("#faceIdentity"),
+  faceImagePath: qs("#faceImagePath"),
+  copyToGallery: qs("#copyToGallery"),
+  faceUserSelect: qs("#faceUserSelect"),
+  extraFaceImagePath: qs("#extraFaceImagePath"),
+  copyExtraToGallery: qs("#copyExtraToGallery"),
+  faceFeedback: qs("#faceFeedback"),
+  faceUsersTable: qs("#faceUsersTable"),
+  galleryDir: qs("#galleryDir"),
+  galleryImages: qs("#galleryImages"),
 };
 
 function boolText(value, open = "开", closed = "关") {
@@ -26,6 +37,15 @@ function shortTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 async function api(path, options = {}) {
@@ -106,6 +126,57 @@ async function refreshProfile() {
   }
 }
 
+async function refreshFaceUsers() {
+  const data = await api("/api/face/users");
+  const users = data.users || [];
+  stateEls.faceUsersTable.innerHTML = "";
+  stateEls.faceUserSelect.innerHTML = "";
+
+  if (users.length === 0) {
+    stateEls.faceUsersTable.innerHTML = `<tr><td colspan="4">暂无授权人员</td></tr>`;
+    stateEls.faceUserSelect.innerHTML = `<option value="">暂无人员</option>`;
+    return users;
+  }
+
+  for (const user of users) {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${user.id}</td>
+      <td>${escapeHtml(user.identity || "--")}</td>
+      <td>${escapeHtml(user.name || "--")}</td>
+      <td>${user.image_count ?? 0}</td>
+    `;
+    stateEls.faceUsersTable.appendChild(row);
+
+    const option = document.createElement("option");
+    option.value = user.id;
+    option.textContent = `${user.identity || user.id} / ${user.name || "--"}`;
+    stateEls.faceUserSelect.appendChild(option);
+  }
+  return users;
+}
+
+async function refreshFaceGallery() {
+  const data = await api("/api/face/gallery");
+  stateEls.galleryDir.textContent = data.gallery_dir || "Gallery 未配置";
+  stateEls.galleryImages.innerHTML = "";
+  const images = data.images || [];
+  if (images.length === 0) {
+    stateEls.galleryImages.innerHTML = `<div class="gallery-item"><strong>注册照</strong><span>暂无</span></div>`;
+    return;
+  }
+
+  for (const image of images.slice(-4).reverse()) {
+    const item = document.createElement("div");
+    item.className = "gallery-item";
+    item.innerHTML = `
+      <strong>${escapeHtml(image.identity || image.user_id)}</strong>
+      <span>${escapeHtml(image.image_path || "--")}</span>
+    `;
+    stateEls.galleryImages.appendChild(item);
+  }
+}
+
 async function sendCommand(target, action, value = null) {
   const payload = { target, action };
   if (value !== null) payload.value = value;
@@ -124,6 +195,46 @@ async function runVision(kind) {
     body: JSON.stringify({ image_path: imagePath }),
   });
   stateEls.visionResult.textContent = JSON.stringify(data.record, null, 2);
+}
+
+async function createFaceUser() {
+  const name = stateEls.faceUserName.value.trim();
+  const identity = stateEls.faceIdentity.value.trim();
+  const imagePath = stateEls.faceImagePath.value.trim();
+  const payload = {
+    name,
+    copy_to_gallery: stateEls.copyToGallery.checked,
+  };
+  if (identity) payload.identity = identity;
+  if (imagePath) payload.image_path = imagePath;
+
+  const data = await api("/api/face/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  stateEls.faceFeedback.textContent = `已新增 ${data.user.identity}`;
+  stateEls.faceUserName.value = "";
+  stateEls.faceIdentity.value = "";
+  stateEls.faceImagePath.value = "";
+  await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
+}
+
+async function addFaceImage() {
+  const userId = stateEls.faceUserSelect.value;
+  const imagePath = stateEls.extraFaceImagePath.value.trim();
+  if (!userId) throw new Error("请选择人员");
+  if (!imagePath) throw new Error("请输入注册照路径");
+
+  const data = await api(`/api/face/users/${userId}/images`, {
+    method: "POST",
+    body: JSON.stringify({
+      image_path: imagePath,
+      copy_to_gallery: stateEls.copyExtraToGallery.checked,
+    }),
+  });
+  stateEls.faceFeedback.textContent = `注册照已添加 #${data.image.id}`;
+  stateEls.extraFaceImagePath.value = "";
+  await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
 }
 
 function bindEvents() {
@@ -156,10 +267,18 @@ function bindEvents() {
   qs("#runFace").addEventListener("click", () => runVision("face").catch((error) => {
     stateEls.visionResult.textContent = error.message;
   }));
+
+  qs("#createFaceUser").addEventListener("click", () => createFaceUser().catch((error) => {
+    stateEls.faceFeedback.textContent = error.message;
+  }));
+
+  qs("#addFaceImage").addEventListener("click", () => addFaceImage().catch((error) => {
+    stateEls.faceFeedback.textContent = error.message;
+  }));
 }
 
 async function refreshAll() {
-  await Promise.allSettled([refreshStatus(), refreshHistory(), refreshProfile()]);
+  await Promise.allSettled([refreshStatus(), refreshHistory(), refreshProfile(), refreshFaceUsers(), refreshFaceGallery()]);
 }
 
 bindEvents();
