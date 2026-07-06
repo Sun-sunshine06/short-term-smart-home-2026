@@ -4,19 +4,33 @@
 
 ## 已确认方向
 
-- 验收演示预计使用 **香橙派 + 模拟信号**，观察前端 GUI 的状态变化。
+- 验收演示预计使用 **Orange Pi AIpro 20T + 模拟信号/外接传感器**，观察前端 GUI 的状态变化。
 - 后端和算法服务先运行在 **性能较稳定的游戏本/本地电脑** 上。
 - 前端使用 **Web GUI**，演示时可通过域名 `wudilyy666.top` 访问；如果网络配置不稳定，保留局域网 IP 或本机访问作为备用。
-- 硬件与后端通信先走 **HTTP**，不把 MQTT 作为第一版必做项。
-- YOLO 先使用 **预训练模型** 识别人、车等常见类别；第一版完成后，如果时间允许或课程要求需要，再考虑自定义训练。
+- Orange Pi AIpro 20T 与后端通信先走 **HTTP**，不把 MQTT 作为第一版必做项。
+- YOLO 优先接入组内已经训练好的模型；预训练模型作为备用方案。
 - 人脸识别优先使用 `face_recognition + OpenCV`；如果环境安装困难，则降级到 OpenCV LBPH 或其他更容易演示的方案。
+
+## Orange Pi AIpro 20T 角色约定
+
+Orange Pi AIpro 20T 是本项目的硬件/边缘端核心设备。根据官方资料，它具备 20TOPS AI 算力、12GB/24GB LPDDR4X 内存、双 2.5G 网口等能力，后续有条件时可以承载更多边缘计算任务。
+
+但为了第一版稳定验收，建议先把 Orange Pi AIpro 20T 定位为：
+
+- 采集模拟信号或外接传感器状态；
+- 控制门锁/舵机、灯光、风扇等执行器；
+- 通过 HTTP 向后端上传状态；
+- 通过轮询或接收 HTTP 请求执行后端下发的控制命令；
+- 如摄像头接在 Orange Pi 上，则负责拍照并把图片上传给后端。
+
+第一版暂不强制把 Flask 后端、数据库、YOLO 或人脸识别全部部署到 Orange Pi 上。原因是 AIpro 20T 的 NPU/Ascend/CANN/MindSpore 推理环境需要额外适配，短期内容易变成环境风险。后端和算法先跑在游戏本上，Orange Pi 先稳定完成硬件交互。
 
 ## 第一版目标
 
 第一版先跑通完整链路：
 
 ```text
-香橙派/硬件模拟信号
+Orange Pi AIpro 20T / 硬件模拟信号
   -> HTTP 上报到后端
   -> 后端写入 SQLite / 更新当前状态
   -> Web GUI 实时展示状态变化
@@ -30,7 +44,7 @@
 
 ### 1. 硬件端上报方式
 
-需要确认硬件组是否能通过 HTTP 向后端发送状态数据。
+需要确认 Orange Pi AIpro 20T 是否能通过 HTTP 向后端发送状态数据。
 
 建议接口：
 
@@ -56,17 +70,17 @@ Content-Type: application/json
 
 需要确认是：
 
-- 后端直接向硬件发送 HTTP 请求；
-- 还是硬件端定时向后端轮询控制命令；
+- 后端直接向 Orange Pi 发送 HTTP 请求；
+- 还是 Orange Pi 定时向后端轮询控制命令；
 - 或者第一版只做前端状态模拟，不实际反控硬件。
 
 建议第一版采用更容易调试的方式：
 
 ```text
-硬件端定时 GET /api/device/commands
+Orange Pi 定时 GET /api/device/commands
 ```
 
-这样后端不需要知道硬件 IP，也更适合校园网/局域网不稳定场景。
+这样后端不需要知道 Orange Pi 的固定 IP，也更适合校园网/局域网不稳定场景。
 
 ### 3. 模拟信号范围
 
@@ -83,19 +97,37 @@ Content-Type: application/json
 需要确认摄像头接在：
 
 - 后端电脑；
-- 香橙派；
+- Orange Pi AIpro 20T；
 - 其他硬件设备。
 
 第一版建议 USB 摄像头接后端电脑，YOLO 和人脸识别都在后端电脑运行，稳定性最高。
+
+如果摄像头接在 Orange Pi AIpro 20T 上，需要确认：
+
+- Orange Pi 如何拍照；
+- 图片如何传给后端；
+- 是上传原图，还是上传已处理后的结果图；
+- 拍照接口是否也走 HTTP。
+
+### 5. Orange Pi 环境与网络
+
+需要硬件组确认：
+
+- Orange Pi AIpro 20T 使用什么系统：Ubuntu、openEuler、Orange Pi OS，还是其他；
+- 是否能连接到和后端电脑相同的局域网；
+- 是否能稳定访问后端电脑的 IP 和端口；
+- 是否能运行 Python 脚本，或使用其他语言发送 HTTP 请求；
+- 是否需要固定 IP、热点、网线直连或路由器；
+- GPIO、PWM、I2C、UART 等接口最终会用到哪些。
 
 ## 后端接口草案
 
 ```text
 GET  /                     Web GUI
 GET  /api/status            获取当前状态
-POST /api/sensor/update     硬件上传传感器/模拟信号
+POST /api/sensor/update     Orange Pi 上传传感器/模拟信号
 POST /api/device/control    前端提交控制请求
-GET  /api/device/commands   硬件轮询待执行命令
+GET  /api/device/commands   Orange Pi 轮询待执行命令
 POST /api/camera/capture    拍照并保存
 POST /api/yolo/detect       YOLO 识别
 POST /api/face/recognize    人脸识别门禁
@@ -106,10 +138,10 @@ GET  /api/history           查询历史记录
 
 ### YOLO
 
-- 第一版：使用预训练模型，做单张图片或低频识别。
-- 识别目标：person、car 等常见类别。
+- 第一版：优先接入组内已经训练好的模型，做单张图片或低频识别。
+- 备用方案：如果自训练模型集成时间不够，则使用 Ultralytics 预训练模型识别人、车等常见类别。
 - 输出：原图、带框结果图、类别、置信度、时间。
-- 暂不训练自定义模型，除非第一版完成后仍有时间。
+- 后端需要 YOLO 组提供模型文件、类别表、推理脚本或 `detect_image(image_path)` 函数。
 
 ### 人脸识别
 
@@ -123,17 +155,17 @@ GET  /api/history           查询历史记录
 
 1. 后端最终运行在哪台电脑上，是否确定使用游戏本？
 2. 域名 `wudilyy666.top` 谁负责解析、反代、内网穿透或端口转发？
-3. 硬件组能否按 JSON 格式走 HTTP 上报？
-4. 控制链路采用“后端主动发给硬件”还是“硬件轮询后端命令”？
+3. Orange Pi AIpro 20T 能否按 JSON 格式走 HTTP 上报？
+4. 控制链路采用“后端主动发给 Orange Pi”还是“Orange Pi 轮询后端命令”？
 5. 摄像头最终接在哪里？
-6. 是否接受第一版 YOLO 不训练，只用预训练模型？
+6. YOLO 组能否提供模型文件、类别表和可被后端调用的推理接口？
 7. 人脸识别环境由谁搭，若 `face_recognition` 安装失败是否允许立刻降级？
 8. GUI 需要哪些页面：只做 Dashboard，还是再加历史记录页/人员录入页？
 9. 验收时是否需要手机访问，还是电脑浏览器演示即可？
 
 ## 建议下一步
 
-- 先向硬件组确认 HTTP 接口、模拟信号含义、摄像头连接方式。
+- 先向硬件组确认 Orange Pi AIpro 20T 的系统环境、HTTP 接口、模拟信号含义、摄像头连接方式。
 - 软件组先做 Flask + SQLite + Web GUI 空壳，用模拟数据跑通页面。
-- 硬件接口未定前，后端先提供 `/api/sensor/update` 和 `/api/status`，方便硬件组联调。
+- Orange Pi 接口未定前，后端先提供 `/api/sensor/update` 和 `/api/status`，方便硬件组联调。
 - YOLO、人脸识别先独立做 demo，等后端基本接口稳定后再接入 GUI。
