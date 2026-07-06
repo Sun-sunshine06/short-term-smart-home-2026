@@ -140,18 +140,17 @@ GET  /api/history           查询历史记录
 
 - 第一版：优先接入视觉组已经训练好的 YOLO26s 模型，做单张图片或低频识别。
 - 备用方案：如果自训练模型集成时间不够，则使用 Ultralytics 预训练模型识别人、车等常见类别。
-- 临时模型路径：`models/joint_noapi_yolo26s_best.pt`。
-- 正式模型建议路径：`models/yolo_object_best.pt`。
+- 视觉组当前交付模型路径：`training/models/object_fire400_drone2800_yolo26s_v1_best.pt`。
 - 模型权重不直接提交 Git，通过 Release、共享盘或网盘分发；后端通过 `MODEL_PATH` 指向本地模型。
 - 第一版输入：`image_path: str`。
 - 第一版输出：`result_image_path`、`detections`、`model`。
-- 后端需要 YOLO 组提供类别表、模型文件和 `detect_image(image_path)` 函数。
+- 视觉组已提供 `training/` 目录中的训练、验证和接口说明；后端 adapter 已按该路径优先适配。
 
-当前/计划类别：
+当前类别：
 
 ```text
-临时模型：face, fire_extinguisher, drone
-正式目标：person, car, fire_extinguisher, drone，以及其他演示需要的物体类别
+0: fire_extinguisher
+1: drone
 ```
 
 ### 人脸识别
@@ -159,8 +158,8 @@ GET  /api/history           查询历史记录
 - 第一版目标：完成 2 名授权人员 + 1 名非授权人员演示。
 - 优先方案：InsightFace `buffalo_l`。
 - 计划使用：SCRFD 人脸检测、5 点关键点、ArcFace 标准对齐、w600k_r50 embedding、cosine similarity 比对。
-- 默认阈值暂按 cosine similarity `0.65`，后续用实际注册照和测试照重新标定。
-- 后端预留 `verify_face(image_path)`，返回 `matched`、`name`、`score`、`threshold`、`bbox`、`landmarks_5`。
+- 视觉组当前建议阈值：cosine similarity `0.40`，`min_margin = 0.05`；后续用实际注册照和测试照重新标定。
+- 后端预留 `verify_face(image_path)`，返回 `matched`、`user_id`、`name`、`score`、`threshold`、`min_margin`、`score_margin`、`bbox`、`landmarks_5`、`engine`、`model_pack` 等字段。
 - 识别通过后：前端显示授权通过，后端记录日志，并触发开门状态。
 - 识别失败后：前端显示未授权，门锁不打开。
 

@@ -61,7 +61,19 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
     for key in ("door_open", "window_open", "fan_on", "lock_open", "camera_online", "hardware_online", "matched"):
         if key in result and result[key] is not None:
             result[key] = bool(result[key])
-    for key in ("labels", "detections", "raw_result_json", "raw_json", "spec_json", "bbox", "landmarks_5"):
+    for key in (
+        "labels",
+        "detections",
+        "raw_result_json",
+        "raw_json",
+        "spec_json",
+        "bbox",
+        "landmarks_5",
+        "best_match",
+        "second_best_identity_match",
+        "top_matches",
+        "skipped",
+    ):
         if key in result and isinstance(result[key], str):
             try:
                 result[key] = json.loads(result[key])
@@ -150,13 +162,23 @@ def init_db() -> None:
 
             CREATE TABLE IF NOT EXISTS access_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT,
                 user_name TEXT,
                 result TEXT NOT NULL,
                 matched INTEGER,
                 score REAL,
                 threshold REAL,
+                min_margin REAL,
+                score_margin REAL,
+                det_score REAL,
+                engine TEXT,
+                model_pack TEXT,
                 bbox TEXT,
                 landmarks_5 TEXT,
+                best_match TEXT,
+                second_best_identity_match TEXT,
+                top_matches TEXT,
+                skipped TEXT,
                 image_path TEXT,
                 raw_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL
@@ -166,10 +188,20 @@ def init_db() -> None:
         ensure_column(conn, "detection_records", "model_name", "TEXT")
         ensure_column(conn, "detection_records", "model_weights", "TEXT")
         ensure_column(conn, "access_logs", "matched", "INTEGER")
+        ensure_column(conn, "access_logs", "user_id", "TEXT")
         ensure_column(conn, "access_logs", "score", "REAL")
         ensure_column(conn, "access_logs", "threshold", "REAL")
+        ensure_column(conn, "access_logs", "min_margin", "REAL")
+        ensure_column(conn, "access_logs", "score_margin", "REAL")
+        ensure_column(conn, "access_logs", "det_score", "REAL")
+        ensure_column(conn, "access_logs", "engine", "TEXT")
+        ensure_column(conn, "access_logs", "model_pack", "TEXT")
         ensure_column(conn, "access_logs", "bbox", "TEXT")
         ensure_column(conn, "access_logs", "landmarks_5", "TEXT")
+        ensure_column(conn, "access_logs", "best_match", "TEXT")
+        ensure_column(conn, "access_logs", "second_best_identity_match", "TEXT")
+        ensure_column(conn, "access_logs", "top_matches", "TEXT")
+        ensure_column(conn, "access_logs", "skipped", "TEXT")
 
         existing_profile = conn.execute("SELECT id FROM hardware_profiles LIMIT 1").fetchone()
         if existing_profile is None:
@@ -481,23 +513,38 @@ def create_app() -> Flask:
         if matched is None:
             matched = bool(merged.get("granted"))
         result = merged.get("result") or ("granted" if matched else "denied")
+        user_id = merged.get("user_id")
         user_name = merged.get("user_name") or merged.get("name")
         with connect_db() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO access_logs
-                    (user_name, result, matched, score, threshold, bbox,
-                     landmarks_5, image_path, raw_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (user_id, user_name, result, matched, score, threshold,
+                     min_margin, score_margin, det_score, engine, model_pack,
+                     bbox, landmarks_5, best_match, second_best_identity_match,
+                     top_matches, skipped, image_path, raw_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    str(user_id) if user_id is not None else None,
                     user_name,
                     result,
                     int(bool(matched)),
                     merged.get("score"),
                     merged.get("threshold"),
+                    merged.get("min_margin"),
+                    merged.get("score_margin"),
+                    merged.get("det_score"),
+                    merged.get("engine"),
+                    merged.get("model_pack"),
                     json.dumps(merged.get("bbox"), ensure_ascii=False) if merged.get("bbox") is not None else None,
                     json.dumps(merged.get("landmarks_5"), ensure_ascii=False) if merged.get("landmarks_5") is not None else None,
+                    json.dumps(merged.get("best_match"), ensure_ascii=False) if merged.get("best_match") is not None else None,
+                    json.dumps(merged.get("second_best_identity_match"), ensure_ascii=False)
+                    if merged.get("second_best_identity_match") is not None
+                    else None,
+                    json.dumps(merged.get("top_matches"), ensure_ascii=False) if merged.get("top_matches") is not None else None,
+                    json.dumps(merged.get("skipped"), ensure_ascii=False) if merged.get("skipped") is not None else None,
                     image_path,
                     json.dumps(merged, ensure_ascii=False),
                     utc_now(),
