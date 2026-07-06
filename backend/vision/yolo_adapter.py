@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
-DEFAULT_MODEL_PATH = "models/yolo_object_best.pt"
+DEFAULT_MODEL_PATH = "training/models/object_fire400_drone2800_yolo26s_v1_best.pt"
 
 
 def _project_root() -> Path:
@@ -52,7 +52,7 @@ def _mock_detection(image_path: str) -> dict[str, Any]:
         "result_image_path": image_path,
         "detections": [
             {
-                "label": "person",
+                "label": "fire_extinguisher",
                 "class_id": 0,
                 "confidence": 0.88,
                 "bbox": [120, 80, 260, 360],
