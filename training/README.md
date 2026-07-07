@@ -134,7 +134,7 @@ def detect_image(image_path: str, out_dir: str = "runs/inference/backend") -> di
     results = _model.predict(
         source=image_path,
         imgsz=640,
-        conf=0.25,
+        conf=0.60,
         save=True,
         project=out_dir,
         name="result",
@@ -180,6 +180,7 @@ def detect_image(image_path: str, out_dir: str = "runs/inference/backend") -> di
 - `confidence`：置信度。
 - `bbox`：像素坐标 `[x1, y1, x2, y2]`。
 - `result_image_path`：带检测框和类别标签的结果图路径。
+- 当前建议物体检测推理阈值使用 `conf=0.60`，用于减少非目标图片误检。
 
 ### 5.2 人脸门禁接口
 
