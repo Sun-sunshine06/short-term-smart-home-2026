@@ -58,7 +58,7 @@ local/                   本地材料，默认不提交 Git
 当前 `test` 分支已提供第一版后端原型：
 
 ```powershell
-cd D:\大二下\01_课程\short_term_program\backend
+cd <PROJECT_ROOT>\backend
 python -m pip install -r requirements.txt
 python app.py
 ```
@@ -90,7 +90,7 @@ GET  /api/face/gallery
 没有真实硬件时，可以用模拟脚本测试 Orange Pi AIpro 20T 数据上报：
 
 ```powershell
-cd D:\大二下\01_课程\short_term_program\backend
+cd <PROJECT_ROOT>\backend
 python scripts\simulate_orange_pi.py
 ```
 
