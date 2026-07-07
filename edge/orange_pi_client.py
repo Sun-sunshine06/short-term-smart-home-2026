@@ -3,12 +3,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import random
+import shutil
+import socket
+import subprocess
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
+
+
+CLIENT_VERSION = "0.2.0"
 
 
 def post_json(base_url: str, path: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -29,10 +36,114 @@ def get_json(base_url: str, path: str, timeout: float) -> dict[str, Any]:
         return json.loads(response.read().decode("utf-8"))
 
 
-def build_mock_payload(step: int, source: str) -> dict[str, Any]:
+def run_text(command: list[str]) -> str:
+    try:
+        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=2)
+    except Exception:
+        return ""
+    return completed.stdout.strip()
+
+
+def read_os_release() -> dict[str, str]:
+    path = "/etc/os-release"
+    values: dict[str, str] = {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                if "=" not in line:
+                    continue
+                key, value = line.strip().split("=", 1)
+                values[key] = value.strip().strip('"')
+    except OSError:
+        pass
+    return values
+
+
+def get_ip_addresses() -> list[str]:
+    output = run_text(["hostname", "-I"])
+    addresses = [item for item in output.split() if item]
+    if addresses:
+        return addresses
+    try:
+        return [socket.gethostbyname(socket.gethostname())]
+    except OSError:
+        return []
+
+
+def read_meminfo() -> dict[str, int]:
+    result: dict[str, int] = {}
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as handle:
+            for line in handle:
+                if ":" not in line:
+                    continue
+                key, value = line.split(":", 1)
+                parts = value.strip().split()
+                if parts:
+                    result[key] = int(parts[0])
+    except (OSError, ValueError):
+        pass
+    return result
+
+
+def read_uptime_seconds() -> Any:
+    try:
+        with open("/proc/uptime", "r", encoding="utf-8") as handle:
+            return float(handle.read().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def build_registration_payload(node_id: str, name: str, role: str) -> dict[str, Any]:
+    os_release = read_os_release()
+    uname = platform.uname()
+    return {
+        "node_id": node_id,
+        "name": name,
+        "role": role,
+        "hostname": socket.gethostname(),
+        "os_name": os_release.get("PRETTY_NAME") or os_release.get("NAME") or platform.system(),
+        "os_version": os_release.get("VERSION") or os_release.get("VERSION_ID"),
+        "kernel": uname.release,
+        "arch": uname.machine,
+        "python_version": platform.python_version(),
+        "client_version": CLIENT_VERSION,
+        "ip_addresses": get_ip_addresses(),
+    }
+
+
+def build_heartbeat_payload(node_id: str, name: str) -> dict[str, Any]:
+    disk = shutil.disk_usage("/")
+    meminfo = read_meminfo()
+    metrics: dict[str, Any] = {
+        "uptime_seconds": read_uptime_seconds(),
+        "disk_total_bytes": disk.total,
+        "disk_used_bytes": disk.used,
+        "disk_free_bytes": disk.free,
+        "mem_total_kb": meminfo.get("MemTotal"),
+        "mem_available_kb": meminfo.get("MemAvailable"),
+    }
+    if hasattr(os, "getloadavg"):
+        try:
+            metrics["load_avg"] = list(os.getloadavg())
+        except OSError:
+            pass
+    return {
+        "node_id": node_id,
+        "name": name,
+        "hostname": socket.gethostname(),
+        "status": "online",
+        "client_version": CLIENT_VERSION,
+        "ip_addresses": get_ip_addresses(),
+        "metrics": metrics,
+    }
+
+
+def build_mock_payload(step: int, source: str, node_id: str) -> dict[str, Any]:
     temperature = round(25.0 + random.random() * 6.0, 1)
     return {
         "source": source,
+        "node_id": node_id,
         "temperature": temperature,
         "door_open": step % 12 in {0, 1},
         "window_open": step % 20 in {5, 6, 7},
@@ -75,15 +186,41 @@ def main() -> None:
     parser.add_argument("--count", type=int, default=0, help="Number of loops; 0 means forever.")
     parser.add_argument("--timeout", type=float, default=5.0, help="HTTP timeout seconds.")
     parser.add_argument("--source", default="orange_pi_aipro_20t", help="Sensor source name.")
+    parser.add_argument("--node-id", default=os.environ.get("ORANGE_PI_NODE_ID"), help="Stable edge node id.")
+    parser.add_argument("--name", default="Orange Pi AIpro 20T", help="Human-readable node name.")
+    parser.add_argument("--role", default="orange_pi_edge", help="Node role stored by the backend.")
+    parser.add_argument("--heartbeat-every", type=int, default=1, help="Send heartbeat every N loops; 0 disables it.")
     parser.add_argument("--no-ack", action="store_true", help="Do not acknowledge consumed commands.")
     args = parser.parse_args()
 
     base_url = args.base_url.rstrip("/")
+    node_id = (args.node_id or socket.gethostname() or args.source).strip()
     step = 0
-    print(f"Orange Pi client started: backend={base_url}")
+    print(f"Orange Pi client started: backend={base_url} node_id={node_id}")
+    try:
+        registration = post_json(
+            base_url,
+            "/api/edge/register",
+            build_registration_payload(node_id, args.name, args.role),
+            args.timeout,
+        )
+        print(f"register: {registration.get('ok')}")
+    except urllib.error.URLError as exc:
+        print(f"register network error: {exc}")
+    except Exception as exc:
+        print(f"register error: {exc}")
+
     while args.count <= 0 or step < args.count:
-        payload = build_mock_payload(step, args.source)
+        payload = build_mock_payload(step, args.source, node_id)
         try:
+            if args.heartbeat_every > 0 and step % args.heartbeat_every == 0:
+                heartbeat = post_json(
+                    base_url,
+                    "/api/edge/heartbeat",
+                    build_heartbeat_payload(node_id, args.name),
+                    args.timeout,
+                )
+                print(f"heartbeat #{step + 1}: {heartbeat.get('ok')}")
             response = post_json(base_url, "/api/sensor/update", payload, args.timeout)
             print(f"sensor #{step + 1}: {payload} -> {response.get('ok')}")
             poll_commands(base_url, args.timeout, acknowledge=not args.no_ack)

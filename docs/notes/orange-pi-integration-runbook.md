@@ -30,6 +30,8 @@ Orange Pi AIpro 20T
 
 - Orange Pi 可以访问 `GET /api/health`。
 - Orange Pi 可以调用 `POST /api/sensor/update`。
+- Orange Pi 可以调用 `POST /api/edge/register` 登记节点信息。
+- Orange Pi 可以调用 `POST /api/edge/heartbeat` 上报在线心跳和系统资源。
 - 后端可以写入 SQLite。
 - Web GUI 可以看到状态变化。
 - Orange Pi 端脚本可以轮询 `GET /api/device/commands` 并 ack 命令。
@@ -54,7 +56,7 @@ Orange Pi AIpro 20T
 
 香橙派 openEuler -> Python 脚本 -> HTTP 上报 -> Flask 后端 -> SQLite -> Web GUI 展示。
 
-我们已经实测从香橙派向后端 POST /api/sensor/update 成功，前端控制台可以看到状态变化；香橙派端也能轮询 /api/device/commands，后续可以接硬件执行。
+我们已经实测从香橙派向后端 POST /api/sensor/update 成功，前端控制台可以看到状态变化；同时香橙派会向 /api/edge/register 和 /api/edge/heartbeat 上报节点信息、IP 和基础资源状态，后端数据库可以记录板子是否在线。香橙派端也能轮询 /api/device/commands，后续可以接硬件执行。
 
 现在还差硬件组确认真实模拟输入/执行器的接线和含义，例如门窗开关、灯光亮度、风扇、门锁/舵机分别接哪个 GPIO/PWM/I2C/ADC。确认后只需要把 orange_pi_client.py 里生成 mock 数据的部分替换成真实读取即可。
 ```
@@ -62,7 +64,7 @@ Orange Pi AIpro 20T
 更短版本：
 
 ```text
-香橙派到后端和前端的链路已跑通：Orange Pi -> HTTP -> Flask/SQLite -> Web GUI。现在上报的是脚本模拟数据，等硬件组确认引脚和传感器定义后，把脚本的数据源替换成真实 GPIO/传感器读取即可。
+香橙派到后端和前端的链路已跑通：Orange Pi -> HTTP -> Flask/SQLite -> Web GUI。现在后端已能记录香橙派节点在线心跳，传感器部分仍是脚本模拟数据，等硬件组确认引脚和传感器定义后，把脚本的数据源替换成真实 GPIO/传感器读取即可。
 ```
 
 ## 关机/断开后下次恢复步骤
@@ -152,6 +154,13 @@ http://127.0.0.1:5000/
 
 观察 Web GUI 状态是否变化。
 
+也可以在电脑端检查香橙派节点是否已经写入数据库：
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:5000/api/edge/nodes
+Invoke-RestMethod http://127.0.0.1:5000/api/edge/heartbeats?limit=5
+```
+
 ## 如果脚本丢失
 
 仓库中有同一份脚本：
@@ -178,6 +187,25 @@ Orange Pi 上报状态：
 
 ```text
 POST /api/sensor/update
+```
+
+Orange Pi 注册边缘节点：
+
+```text
+POST /api/edge/register
+```
+
+Orange Pi 上报在线心跳：
+
+```text
+POST /api/edge/heartbeat
+```
+
+查看边缘节点和心跳历史：
+
+```text
+GET /api/edge/nodes
+GET /api/edge/heartbeats
 ```
 
 Orange Pi 轮询控制命令：
