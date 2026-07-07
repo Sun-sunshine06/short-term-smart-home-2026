@@ -58,6 +58,7 @@ POST /api/device/control
 GET  /api/device/commands
 POST /api/device/commands/<id>/ack
 GET  /api/history
+POST /api/camera/upload
 POST /api/yolo/detect
 GET  /api/yolo/latest
 GET  /api/yolo/history
@@ -100,6 +101,38 @@ GET /api/face/gallery
 ```
 
 ## Example YOLO Request
+
+Orange Pi camera or snapshot uploads should use:
+
+```text
+POST /api/camera/upload
+```
+
+For acceptance, put the test image on Orange Pi first and let `edge/orange_pi_client.py --upload-image <path>` call this endpoint. The curl command below is only the raw protocol equivalent.
+
+Multipart example:
+
+```bash
+curl -X POST http://<BACKEND_IP>:5000/api/camera/upload \
+  -F "image=@/tmp/smart_home_snapshot.jpg" \
+  -F "source=orange_pi_camera" \
+  -F "node_id=orange-pi-aipro-20t"
+```
+
+JSON/base64 example:
+
+```json
+{
+  "filename": "smart_home_snapshot.jpg",
+  "source": "orange_pi_camera",
+  "node_id": "orange-pi-aipro-20t",
+  "image_base64": "<base64 encoded image>"
+}
+```
+
+The upload endpoint saves the image and immediately passes the saved `image_path` to the YOLO adapter. The response includes both `image_path` and `yolo_record`.
+
+If the image already exists on the backend computer, call YOLO directly:
 
 ```json
 {

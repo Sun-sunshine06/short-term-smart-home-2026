@@ -47,6 +47,55 @@ Orange Pi AIpro 20T
 
 这些字段现在由脚本生成。硬件组给出实际引脚/传感器方案后，只需要替换 `edge/orange_pi_client.py` 中的数据来源。
 
+## 图像采集和上传流程
+
+第一版约定：**图像采集/图片入口走 Orange Pi，YOLO 推理先走后端游戏本**。Orange Pi 不需要先部署 YOLO 模型，它只负责拿到图片、保存本地图片、通过 HTTP 上传给后端。
+
+推荐链路：
+
+```text
+摄像头 / 测试图片
+-> 图片先放到 Orange Pi
+-> POST /api/camera/upload 上传到后端
+-> 后端保存到 backend/data/uploads/camera/
+-> 后端把保存后的 image_path 交给 YOLO adapter
+-> detection_records 入库
+-> Web GUI / API 查询识别结果
+```
+
+注意：上传图片不是只做文件保存，后端收到图片后应立即把保存后的 `image_path` 交给 YOLO 流程。当前后端接口 `POST /api/camera/upload` 已按这个方向预留：上传成功后会返回 `image_path` 和 `yolo_record`。
+
+YOLO 相关模型文件和推理实现由 YOLO 组交付：
+
+- 模型权重：`training/models/object_fire400_drone2800_yolo26s_v1_best.pt`
+- 类别表和测试图片；
+- 必要的运行依赖；
+- `detect_image(image_path)` 的真实推理实现或确认当前 adapter 可用。
+
+在 YOLO 文件未交付前，后端会使用 mock 检测结果保证上传、入库和前端联调可以继续。
+
+验收时如果暂时不接真实摄像头，可以直接把测试图片复制到 Orange Pi，例如：
+
+```text
+/home/openEuler/smart_home_edge/test_images/demo.jpg
+```
+
+然后在 Orange Pi 上执行：
+
+```bash
+python3 ~/smart_home_edge/orange_pi_client.py \
+  --base-url http://<BACKEND_IP>:5000 \
+  --node-id orange-pi-aipro-20t \
+  --upload-image ~/smart_home_edge/test_images/demo.jpg
+```
+
+这条命令会从 Orange Pi 本地读取图片，上传到 `POST /api/camera/upload`，后端保存图片并立即交给 YOLO 流程。结果可以在 Web GUI 或下面接口查看：
+
+```text
+GET /api/yolo/latest
+GET /api/yolo/history
+```
+
 ## 给小组同步的话术
 
 可以直接发到群里：
@@ -57,6 +106,8 @@ Orange Pi AIpro 20T
 香橙派 openEuler -> Python 脚本 -> HTTP 上报 -> Flask 后端 -> SQLite -> Web GUI 展示。
 
 我们已经实测从香橙派向后端 POST /api/sensor/update 成功，前端控制台可以看到状态变化；同时香橙派会向 /api/edge/register 和 /api/edge/heartbeat 上报节点信息、IP 和基础资源状态，后端数据库可以记录板子是否在线。香橙派端也能轮询 /api/device/commands，后续可以接硬件执行。
+
+图像链路按“图片先进入 Orange Pi，Orange Pi 上传，游戏本后端做 YOLO”处理。验收时可以直接把测试图片放进香橙派，再运行 orange_pi_client.py 的 --upload-image；后端已预留 /api/camera/upload，上传图片会保存并交给 YOLO 检测流程；YOLO 权重、类别表和真实推理文件由 YOLO 组交付。
 
 现在还差硬件组确认真实模拟输入/执行器的接线和含义，例如门窗开关、灯光亮度、风扇、门锁/舵机分别接哪个 GPIO/PWM/I2C/ADC。确认后只需要把 orange_pi_client.py 里生成 mock 数据的部分替换成真实读取即可。
 ```
@@ -206,6 +257,18 @@ POST /api/edge/heartbeat
 ```text
 GET /api/edge/nodes
 GET /api/edge/heartbeats
+```
+
+Orange Pi 上传摄像头图片，并交给 YOLO 检测：
+
+```text
+POST /api/camera/upload
+```
+
+YOLO 组或后端直接用本地图片触发检测：
+
+```text
+POST /api/yolo/detect
 ```
 
 Orange Pi 轮询控制命令：

@@ -38,6 +38,19 @@ Orange Pi AIpro 20T / 硬件模拟信号
   -> 后端返回控制结果或下发给硬件端
 ```
 
+图像链路的第一版目标：
+
+```text
+Orange Pi AIpro 20T / 摄像头或测试图片
+  -> 图片先进入 Orange Pi
+  -> Orange Pi 拍照或读取本地测试图片
+  -> POST /api/camera/upload 上传给后端
+  -> 后端保存图片
+  -> 后端把保存后的 image_path 交给 YOLO adapter
+  -> YOLO 结果写入 detection_records
+  -> Web GUI 展示最新识别结果
+```
+
 第一版不追求复杂算法训练或实时视频高帧率，优先保证演示稳定。
 
 ## 需要向硬件组确认的接口问题
@@ -100,14 +113,15 @@ Orange Pi 定时 GET /api/device/commands
 - Orange Pi AIpro 20T；
 - 其他硬件设备。
 
-第一版建议 USB 摄像头接后端电脑，YOLO 和人脸识别都在后端电脑运行，稳定性最高。
+目前建议第一版按“图片先进入 Orange Pi，Orange Pi 上传，游戏本后端推理”推进：摄像头或测试图片由 Orange Pi 负责采集/读取和上传，但 YOLO 和人脸识别先在后端电脑运行，稳定性更高。
 
 如果摄像头接在 Orange Pi AIpro 20T 上，需要确认：
 
 - Orange Pi 如何拍照；
-- 图片如何传给后端；
-- 是上传原图，还是上传已处理后的结果图；
-- 拍照接口是否也走 HTTP。
+- 图片如何传给后端，第一版建议走 `POST /api/camera/upload`；
+- 第一版上传原图，由后端保存后交给 YOLO；
+- 验收时可以先不接真实摄像头，直接把测试图片复制到 Orange Pi，再用 `orange_pi_client.py --upload-image <图片路径>` 上传；
+- 拍照命令由硬件/边缘端确认，后端只要求最终能拿到图片文件或 base64 图片数据。
 
 ### 5. Orange Pi 环境与网络
 
@@ -128,7 +142,7 @@ GET  /api/status            获取当前状态
 POST /api/sensor/update     Orange Pi 上传传感器/模拟信号
 POST /api/device/control    前端提交控制请求
 GET  /api/device/commands   Orange Pi 轮询待执行命令
-POST /api/camera/capture    拍照并保存
+POST /api/camera/upload     Orange Pi 上传图片，后端保存后交给 YOLO
 POST /api/yolo/detect       YOLO 物体识别
 POST /api/face/verify       InsightFace 人脸门禁
 GET  /api/face/users        授权人员列表
@@ -146,6 +160,8 @@ GET  /api/history           查询历史记录
 - 备用方案：如果自训练模型集成时间不够，则使用 Ultralytics 预训练模型识别人、车等常见类别。
 - 视觉组当前交付模型路径：`training/models/object_fire400_drone2800_yolo26s_v1_best.pt`。
 - 模型权重不直接提交 Git，通过 Release、共享盘或网盘分发；后端通过 `MODEL_PATH` 指向本地模型。
+- YOLO 权重、类别表、测试图片和真实推理文件由 YOLO 组交付；后端只负责把上传后的图片路径交给 YOLO adapter。
+- Orange Pi 上传图片后，后端必须触发 YOLO 记录，不应只保存图片。
 - 第一版输入：`image_path: str`。
 - 第一版输出：`result_image_path`、`detections`、`model`。
 - 视觉组已提供 `training/` 目录中的训练、验证和接口说明；后端 adapter 已按该路径优先适配。
