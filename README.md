@@ -27,6 +27,7 @@ docs/
     hardware/            硬件组课件、报告模板、元器件清单
     yolo/                YOLO 安装、训练与使用课件
   notes/                 群聊纪要、录音有效信息提取
+    orange-pi-integration-runbook.md  香橙派联调状态和重启手册
   proposals/             技术方案、接口讨论和任务规划
 local/                   本地材料，默认不提交 Git
 ```
