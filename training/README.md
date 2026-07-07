@@ -29,6 +29,7 @@
 - `val_joint.py`：验证当前或后续训练权重的脚本。
 - `face_compare.py`：InsightFace 人脸比对基础逻辑。
 - `face_service.py`：后端可直接调用的人脸门禁适配层。
+- `object_service.py`：后端可直接调用的 YOLO 物体检测适配层。
 - `face_access_demo.py`：“2 真 1 假”门禁演示脚本。
 - `requirements.txt`：Python 依赖。
 - `.gitignore`：忽略数据集、运行输出和模型权重，避免误提交大文件。
@@ -121,41 +122,15 @@ image_path: str
 
 即后端或硬件侧保存下来的一张图片路径。
 
-建议后端封装函数：
+后端可直接调用：
 
 ```python
-from pathlib import Path
-from ultralytics import YOLO
+from object_service import detect_image
 
-_model = YOLO("models/object_fire400_drone2800_yolo26s_v1_best.pt")
-
-
-def detect_image(image_path: str, out_dir: str = "runs/inference/backend") -> dict:
-    results = _model.predict(
-        source=image_path,
-        imgsz=640,
-        conf=0.60,
-        save=True,
-        project=out_dir,
-        name="result",
-        exist_ok=True,
-    )
-    result = results[0]
-    detections = []
-    for box in result.boxes:
-        class_id = int(box.cls[0])
-        detections.append(
-            {
-                "class_id": class_id,
-                "label": _model.names[class_id],
-                "confidence": float(box.conf[0]),
-                "bbox": [float(x) for x in box.xyxy[0].tolist()],
-            }
-        )
-    return {
-        "result_image_path": str(Path(result.save_dir) / Path(result.path).name),
-        "detections": detections,
-    }
+result = detect_image(
+    image_path="uploads/camera_001.jpg",
+    conf=0.60,
+)
 ```
 
 输出示例：
@@ -344,7 +319,7 @@ runs/face_access_demo_threshold040/face_access_demo_result.json
 已执行：
 
 ```powershell
-python -m py_compile face_compare.py face_service.py face_access_demo.py train_joint.py val_joint.py
+python -m py_compile object_service.py face_compare.py face_service.py face_access_demo.py train_joint.py val_joint.py
 ```
 
 结果：通过。
