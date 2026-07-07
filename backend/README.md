@@ -7,7 +7,7 @@ This version does not require real hardware. It seeds an Orange Pi AIpro 20T har
 ## Run
 
 ```powershell
-cd D:\大二下\01_课程\short_term_program\backend
+cd <PROJECT_ROOT>\backend
 python -m pip install -r requirements.txt
 python app.py
 ```
@@ -35,7 +35,7 @@ http://127.0.0.1:5000/
 Open another terminal:
 
 ```powershell
-cd D:\大二下\01_课程\short_term_program\backend
+cd <PROJECT_ROOT>\backend
 python scripts\simulate_orange_pi.py
 ```
 
@@ -44,9 +44,9 @@ python scripts\simulate_orange_pi.py
 Model weights are not committed to Git. Put local weights under `../training/models/` or set explicit environment variables:
 
 ```powershell
-$env:MODEL_PATH="D:\path\to\training\models\object_fire400_drone2800_yolo26s_v1_best.pt"
+$env:MODEL_PATH="<PROJECT_ROOT>\training\models\object_fire400_drone2800_yolo26s_v1_best.pt"
 $env:FACE_MODEL_PACK="buffalo_l"
-$env:FACE_GALLERY_DIR="D:\path\to\training\face_gallery"
+$env:FACE_GALLERY_DIR="<PROJECT_ROOT>\training\face_gallery"
 $env:FACE_SIMILARITY_THRESHOLD="0.40"
 $env:FACE_MIN_MARGIN="0.05"
 ```

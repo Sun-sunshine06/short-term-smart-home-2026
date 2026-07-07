@@ -1,27 +1,45 @@
 # Orange Pi Edge Client
 
-This directory contains the first Orange Pi AIpro 20T edge-side client.
+This directory contains the Orange Pi AIpro 20T edge-side client.
 
-It uses only Python standard library modules, so it can run on openEuler without installing extra packages.
+The client uses only Python standard library modules, so it can run on openEuler, Ubuntu, or similar Linux systems without installing extra packages.
+
+## Placeholders
+
+```text
+<BACKEND_HOST>  Backend computer IPv4 address reachable from Orange Pi
+<BACKEND_PORT>  Backend port, default 5000
+<EDGE_HOME>     Orange Pi working directory, default ~/smart_home_edge
+<NODE_ID>       Stable node id, for example orange-pi-aipro-20t
+<TEST_IMAGE>    Test image path on Orange Pi
+```
 
 ## Run On Orange Pi
 
-```bash
-python3 orange_pi_client.py --base-url http://10.200.77.182:5000 --interval 2
-```
-
-For a short test:
+From the directory containing `orange_pi_client.py`:
 
 ```bash
-python3 orange_pi_client.py --base-url http://10.200.77.182:5000 --count 3
+python3 orange_pi_client.py \
+  --base-url http://<BACKEND_HOST>:<BACKEND_PORT> \
+  --node-id <NODE_ID> \
+  --interval 2
 ```
 
-If the backend computer changes network, replace `10.200.77.182` with the current computer IPv4 address from `ipconfig`.
+Short test:
 
-The current tested Orange Pi copy is:
+```bash
+python3 orange_pi_client.py \
+  --base-url http://<BACKEND_HOST>:<BACKEND_PORT> \
+  --node-id <NODE_ID> \
+  --count 3
+```
+
+If the backend computer changes network, check its current IPv4 address again and replace `<BACKEND_HOST>`.
+
+Recommended Orange Pi copy:
 
 ```text
-/home/openEuler/smart_home_edge/orange_pi_client.py
+<EDGE_HOME>/orange_pi_client.py
 ```
 
 ## Current Behavior
@@ -31,50 +49,55 @@ The current tested Orange Pi copy is:
 - Sends mock sensor/status data to `POST /api/sensor/update`.
 - Polls pending backend commands from `GET /api/device/commands`.
 - Acknowledges consumed commands through `POST /api/device/commands/<id>/ack`.
+- Uploads a local image with `--upload-image`; the backend saves the image and passes its `image_path` to YOLO.
 - Leaves actual GPIO/PWM execution as a small function to fill after pin mapping is confirmed.
-- Camera/image validation: put the test image on Orange Pi, then run `--upload-image`. The backend saves the image and passes its `image_path` to YOLO.
 
 ## Upload A Test Image For YOLO
 
-Copy a test image to Orange Pi, for example:
+Put a test image on Orange Pi, for example:
 
 ```text
-/home/openEuler/smart_home_edge/test_images/demo.jpg
+<EDGE_HOME>/test_images/demo.jpg
 ```
 
 Then run:
 
 ```bash
-python3 ~/smart_home_edge/orange_pi_client.py \
-  --base-url http://<BACKEND_IP>:5000 \
-  --node-id orange-pi-aipro-20t \
-  --upload-image ~/smart_home_edge/test_images/demo.jpg
+python3 <EDGE_HOME>/orange_pi_client.py \
+  --base-url http://<BACKEND_HOST>:<BACKEND_PORT> \
+  --node-id <NODE_ID> \
+  --upload-image <EDGE_HOME>/test_images/demo.jpg
 ```
 
 This uploads the local Orange Pi image to `POST /api/camera/upload`. The backend saves it and immediately creates a YOLO detection record.
 
-The backend stores edge-node status in:
+## Useful Backend APIs
 
 ```text
 GET /api/edge/nodes
 GET /api/edge/heartbeats
+GET /api/yolo/latest
+GET /api/yolo/history
 ```
 
 ## Restart After Power Off
 
-1. Start the Flask backend on the computer.
-2. Check the computer IPv4 address.
-3. Boot Orange Pi and connect it to the same network.
+1. Start the Flask backend on the backend computer.
+2. Check the backend computer IPv4 address and set `<BACKEND_HOST>`.
+3. Boot Orange Pi and connect it to the same reachable network.
 4. Test from Orange Pi:
 
 ```bash
-curl http://<BACKEND_IP>:5000/api/health
+curl http://<BACKEND_HOST>:<BACKEND_PORT>/api/health
 ```
 
 5. Start the edge client:
 
 ```bash
-python3 ~/smart_home_edge/orange_pi_client.py --base-url http://<BACKEND_IP>:5000 --interval 2
+python3 <EDGE_HOME>/orange_pi_client.py \
+  --base-url http://<BACKEND_HOST>:<BACKEND_PORT> \
+  --node-id <NODE_ID> \
+  --interval 2
 ```
 
 More detailed steps are in `docs/notes/orange-pi-integration-runbook.md`.

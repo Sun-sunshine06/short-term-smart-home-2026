@@ -245,7 +245,7 @@ def main() -> None:
     parser.add_argument(
         "--base-url",
         default=os.environ.get("SMART_HOME_BACKEND", "http://127.0.0.1:5000"),
-        help="Backend base URL, for example http://10.200.77.182:5000",
+        help="Backend base URL, for example http://<BACKEND_HOST>:5000",
     )
     parser.add_argument("--interval", type=float, default=2.0, help="Seconds between sensor updates.")
     parser.add_argument("--count", type=int, default=0, help="Number of loops; 0 means forever.")
