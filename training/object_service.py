@@ -6,11 +6,22 @@ from typing import Any
 DEFAULT_MODEL_PATH = "models/object_fire400_drone2800_yolo26s_v1_best.pt"
 DEFAULT_CONFIDENCE_THRESHOLD = 0.60
 DEFAULT_IMAGE_SIZE = 640
+MODULE_DIR = Path(__file__).resolve().parent
+
+
+def _resolve_local_path(path: str | Path) -> Path:
+    path = Path(path)
+    if path.is_absolute():
+        return path
+    cwd_path = Path.cwd() / path
+    if cwd_path.exists():
+        return cwd_path.resolve()
+    return (MODULE_DIR / path).resolve()
 
 
 @lru_cache(maxsize=2)
 def get_detector(model_path: str = DEFAULT_MODEL_PATH):
-    path = Path(model_path)
+    path = _resolve_local_path(model_path)
     if not path.exists():
         raise FileNotFoundError(f"YOLO model not found: {path}")
 
@@ -35,7 +46,7 @@ def detect_image(
     model = get_detector(model_path)
     out_path = Path(out_dir)
     if not out_path.is_absolute():
-        out_path = (Path.cwd() / out_path).resolve()
+        out_path = (MODULE_DIR / out_path).resolve()
     project = out_path.parent if out_path.parent != Path("") else Path(".")
     name = out_path.name
 
