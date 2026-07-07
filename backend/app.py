@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import re
 import shutil
 import sqlite3
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from flask import Flask, jsonify, render_template, request
+from werkzeug.utils import secure_filename
 
 try:
     from vision.face_adapter import verify_face
@@ -22,6 +26,7 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DEFAULT_DB_PATH = DATA_DIR / "smart_home.db"
+DEFAULT_CAMERA_UPLOAD_DIR = DATA_DIR / "uploads" / "camera"
 DEFAULT_FACE_GALLERY_DIR = BASE_DIR.parent / "training" / "face_gallery"
 
 
@@ -47,6 +52,10 @@ def utc_now() -> str:
 
 def get_db_path() -> Path:
     return Path(os.environ.get("SMART_HOME_DB", DEFAULT_DB_PATH))
+
+
+def get_camera_upload_dir() -> Path:
+    return Path(os.environ.get("CAMERA_UPLOAD_DIR", DEFAULT_CAMERA_UPLOAD_DIR))
 
 
 def get_face_gallery_dir() -> Path:
@@ -339,6 +348,107 @@ def json_text(value: Any, default: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+ALLOWED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+
+
+def path_for_response(path: Path) -> str:
+    try:
+        return path.relative_to(BASE_DIR.parent).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def camera_upload_filename(original_name: str | None) -> str:
+    fallback = "camera.jpg"
+    safe_name = secure_filename(original_name or fallback) or fallback
+    suffix = Path(safe_name).suffix.lower()
+    if suffix not in ALLOWED_IMAGE_SUFFIXES:
+        suffix = ".jpg"
+    stem = Path(safe_name).stem or "camera"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{stamp}_{uuid.uuid4().hex[:8]}_{stem}{suffix}"
+
+
+def save_camera_upload() -> tuple[str | None, dict[str, Any], str | None]:
+    upload_dir = get_camera_upload_dir()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    if request.files.get("image") is not None:
+        image_file = request.files["image"]
+        if not image_file.filename:
+            return None, {}, "image filename is required"
+        target = upload_dir / camera_upload_filename(image_file.filename)
+        image_file.save(target)
+        payload = {
+            "source": request.form.get("source", "orange_pi_camera"),
+            "node_id": request.form.get("node_id"),
+            "filename": image_file.filename,
+            "upload_mode": "multipart",
+        }
+        return path_for_response(target), payload, None
+
+    payload = request.get_json(silent=True) or {}
+    if payload.get("image_path"):
+        return str(payload["image_path"]), payload, None
+
+    encoded = payload.get("image_base64")
+    if not encoded:
+        return None, payload, "image file, image_path, or image_base64 is required"
+    if "," in encoded and encoded.strip().startswith("data:"):
+        encoded = encoded.split(",", 1)[1]
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        return None, payload, "image_base64 is invalid"
+
+    target = upload_dir / camera_upload_filename(str(payload.get("filename") or "camera.jpg"))
+    target.write_bytes(image_bytes)
+    payload = {**payload, "upload_mode": "base64"}
+    return path_for_response(target), payload, None
+
+
+def create_yolo_record(payload: dict[str, Any]) -> sqlite3.Row:
+    image_path = payload.get("image_path")
+    adapter_result: dict[str, Any] = {}
+
+    if image_path and "detections" not in payload:
+        adapter_result = detect_image(str(image_path))
+
+    merged = {**payload, **adapter_result}
+    detections = merged.get("detections", [])
+    labels = payload.get("labels")
+    if labels is None:
+        labels = [item.get("label") for item in detections if isinstance(item, dict) and item.get("label")]
+    confidence = merged.get("confidence")
+    if confidence is None and detections:
+        confidences = [item.get("confidence") for item in detections if isinstance(item, dict) and item.get("confidence") is not None]
+        confidence = max(confidences) if confidences else None
+    model = merged.get("model") if isinstance(merged.get("model"), dict) else {}
+
+    with connect_db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO detection_records
+                (image_path, result_image_path, model_name, model_weights, labels, confidence,
+                 detections, raw_result_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                merged.get("image_path") or image_path,
+                merged.get("result_image_path"),
+                model.get("name"),
+                model.get("weights"),
+                json.dumps(labels or [], ensure_ascii=False),
+                confidence,
+                json.dumps(detections or [], ensure_ascii=False),
+                json.dumps(merged, ensure_ascii=False),
+                utc_now(),
+            ),
+        )
+        conn.commit()
+        return conn.execute("SELECT * FROM detection_records WHERE id = ?", (cursor.lastrowid,)).fetchone()
+
+
 def make_identity(value: str) -> str:
     identity = re.sub(r"[^0-9A-Za-z_\-]+", "_", value.strip()).strip("_").lower()
     return identity or "user"
@@ -419,6 +529,8 @@ def create_app() -> Flask:
                 "health": "/api/health",
                 "edge_nodes": "/api/edge/nodes",
                 "edge_heartbeats": "/api/edge/heartbeats",
+                "camera_upload": "/api/camera/upload",
+                "yolo_detect": "/api/yolo/detect",
             }
         )
 
@@ -780,51 +892,30 @@ def create_app() -> Flask:
                 ).fetchall()
         return jsonify({"ok": True, "heartbeats": [row_to_dict(row) for row in rows]})
 
+    @app.post("/api/camera/upload")
+    def camera_upload():
+        image_path, upload_payload, error = save_camera_upload()
+        if error:
+            return jsonify({"ok": False, "error": error}), 400
+
+        payload = {
+            **upload_payload,
+            "image_path": image_path,
+            "source": upload_payload.get("source") or "orange_pi_camera",
+        }
+        try:
+            row = create_yolo_record(payload)
+        except Exception as exc:
+            return jsonify({"ok": False, "image_path": image_path, "error": str(exc)}), 500
+        return jsonify({"ok": True, "image_path": image_path, "yolo_record": row_to_dict(row)})
+
     @app.post("/api/yolo/detect")
     def yolo_detect():
         payload = request.get_json(silent=True) or {}
-        image_path = payload.get("image_path")
-        adapter_result: dict[str, Any] = {}
-
-        if image_path and "detections" not in payload:
-            try:
-                adapter_result = detect_image(str(image_path))
-            except Exception as exc:
-                return jsonify({"ok": False, "error": str(exc)}), 500
-
-        merged = {**payload, **adapter_result}
-        detections = merged.get("detections", [])
-        labels = payload.get("labels")
-        if labels is None:
-            labels = [item.get("label") for item in detections if isinstance(item, dict) and item.get("label")]
-        confidence = merged.get("confidence")
-        if confidence is None and detections:
-            confidences = [item.get("confidence") for item in detections if isinstance(item, dict) and item.get("confidence") is not None]
-            confidence = max(confidences) if confidences else None
-        model = merged.get("model") if isinstance(merged.get("model"), dict) else {}
-
-        with connect_db() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO detection_records
-                    (image_path, result_image_path, model_name, model_weights, labels, confidence,
-                     detections, raw_result_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    merged.get("image_path") or image_path,
-                    merged.get("result_image_path"),
-                    model.get("name"),
-                    model.get("weights"),
-                    json.dumps(labels or [], ensure_ascii=False),
-                    confidence,
-                    json.dumps(detections or [], ensure_ascii=False),
-                    json.dumps(merged, ensure_ascii=False),
-                    utc_now(),
-                ),
-            )
-            conn.commit()
-            row = conn.execute("SELECT * FROM detection_records WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        try:
+            row = create_yolo_record(payload)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 500
         return jsonify({"ok": True, "record": row_to_dict(row)})
 
     @app.get("/api/yolo/latest")

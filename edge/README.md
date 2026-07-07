@@ -32,6 +32,26 @@ The current tested Orange Pi copy is:
 - Polls pending backend commands from `GET /api/device/commands`.
 - Acknowledges consumed commands through `POST /api/device/commands/<id>/ack`.
 - Leaves actual GPIO/PWM execution as a small function to fill after pin mapping is confirmed.
+- Camera/image validation: put the test image on Orange Pi, then run `--upload-image`. The backend saves the image and passes its `image_path` to YOLO.
+
+## Upload A Test Image For YOLO
+
+Copy a test image to Orange Pi, for example:
+
+```text
+/home/openEuler/smart_home_edge/test_images/demo.jpg
+```
+
+Then run:
+
+```bash
+python3 ~/smart_home_edge/orange_pi_client.py \
+  --base-url http://<BACKEND_IP>:5000 \
+  --node-id orange-pi-aipro-20t \
+  --upload-image ~/smart_home_edge/test_images/demo.jpg
+```
+
+This uploads the local Orange Pi image to `POST /api/camera/upload`. The backend saves it and immediately creates a YOLO detection record.
 
 The backend stores edge-node status in:
 

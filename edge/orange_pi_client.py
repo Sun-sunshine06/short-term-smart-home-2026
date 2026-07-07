@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import os
 import platform
 import random
@@ -32,6 +33,49 @@ def post_json(base_url: str, path: str, payload: dict[str, Any], timeout: float)
 
 def get_json(base_url: str, path: str, timeout: float) -> dict[str, Any]:
     request = urllib.request.Request(urllib.parse.urljoin(base_url, path), method="GET")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def post_multipart_file(
+    base_url: str,
+    path: str,
+    file_path: str,
+    fields: dict[str, Any],
+    timeout: float,
+) -> dict[str, Any]:
+    image_path = os.path.expanduser(file_path)
+    filename = os.path.basename(image_path)
+    content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    boundary = f"----smart-home-{os.urandom(8).hex()}"
+
+    body = bytearray()
+    for key, value in fields.items():
+        if value is None:
+            continue
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode("utf-8"))
+        body.extend(str(value).encode("utf-8"))
+        body.extend(b"\r\n")
+
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(
+        (
+            f'Content-Disposition: form-data; name="image"; filename="{filename}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode("utf-8")
+    )
+    with open(image_path, "rb") as handle:
+        body.extend(handle.read())
+    body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+
+    request = urllib.request.Request(
+        urllib.parse.urljoin(base_url, path),
+        data=bytes(body),
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
@@ -139,6 +183,27 @@ def build_heartbeat_payload(node_id: str, name: str) -> dict[str, Any]:
     }
 
 
+def upload_image(base_url: str, image_path: str, node_id: str, source: str, timeout: float) -> dict[str, Any]:
+    response = post_multipart_file(
+        base_url,
+        "/api/camera/upload",
+        image_path,
+        {
+            "source": source,
+            "node_id": node_id,
+        },
+        timeout,
+    )
+    record = response.get("yolo_record") or {}
+    print(
+        "image upload: "
+        f"ok={response.get('ok')} "
+        f"image_path={response.get('image_path')} "
+        f"model={record.get('model_name') or '--'}"
+    )
+    return response
+
+
 def build_mock_payload(step: int, source: str, node_id: str) -> dict[str, Any]:
     temperature = round(25.0 + random.random() * 6.0, 1)
     return {
@@ -190,6 +255,9 @@ def main() -> None:
     parser.add_argument("--name", default="Orange Pi AIpro 20T", help="Human-readable node name.")
     parser.add_argument("--role", default="orange_pi_edge", help="Node role stored by the backend.")
     parser.add_argument("--heartbeat-every", type=int, default=1, help="Send heartbeat every N loops; 0 disables it.")
+    parser.add_argument("--upload-image", help="Upload one local image from Orange Pi to backend YOLO flow, then exit by default.")
+    parser.add_argument("--image-source", default="orange_pi_camera", help="Source name for image upload records.")
+    parser.add_argument("--continue-after-upload", action="store_true", help="Continue sensor loop after --upload-image.")
     parser.add_argument("--no-ack", action="store_true", help="Do not acknowledge consumed commands.")
     args = parser.parse_args()
 
@@ -209,6 +277,16 @@ def main() -> None:
         print(f"register network error: {exc}")
     except Exception as exc:
         print(f"register error: {exc}")
+
+    if args.upload_image:
+        try:
+            upload_image(base_url, args.upload_image, node_id, args.image_source, args.timeout)
+        except urllib.error.URLError as exc:
+            print(f"image upload network error: {exc}")
+        except Exception as exc:
+            print(f"image upload error: {exc}")
+        if not args.continue_after_upload:
+            return
 
     while args.count <= 0 or step < args.count:
         payload = build_mock_payload(step, args.source, node_id)
