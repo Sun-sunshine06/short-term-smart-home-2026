@@ -397,6 +397,67 @@ th {
   overflow-wrap: anywhere;
 }
 
+.edge-node-card {
+  min-height: 210px;
+}
+
+.empty-state {
+  display: grid;
+  min-height: 120px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.edge-node-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.edge-node-title strong {
+  min-width: 0;
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+
+.edge-node-title span {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(47, 158, 68, 0.12);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.edge-node-list {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+}
+
+.edge-node-list div {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.edge-node-list dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.edge-node-list dd {
+  margin: 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 980px) {
   .status-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));

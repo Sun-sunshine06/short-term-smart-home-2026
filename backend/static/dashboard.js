@@ -26,6 +26,7 @@ const stateEls = {
   faceUsersTable: qs("#faceUsersTable"),
   galleryDir: qs("#galleryDir"),
   galleryImages: qs("#galleryImages"),
+  edgeNodeCard: qs("#edgeNodeCard"),
 };
 
 function boolText(value, open = "开", closed = "关") {
@@ -46,6 +47,21 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll("\"", "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function formatBytes(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  if (number >= 1024 ** 3) return `${(number / 1024 ** 3).toFixed(1)} GB`;
+  if (number >= 1024 ** 2) return `${(number / 1024 ** 2).toFixed(1)} MB`;
+  if (number >= 1024) return `${(number / 1024).toFixed(1)} KB`;
+  return `${number} B`;
+}
+
+function formatMemoryKb(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "--";
+  return formatBytes(number * 1024);
 }
 
 async function api(path, options = {}) {
@@ -124,6 +140,34 @@ async function refreshProfile() {
     item.innerHTML = `<dt>${key}</dt><dd>${value || "--"}</dd>`;
     stateEls.profile.appendChild(item);
   }
+}
+
+async function refreshEdgeNodes() {
+  const data = await api("/api/edge/nodes").catch(() => ({ nodes: [] }));
+  const nodes = data.nodes || [];
+  if (!nodes.length) {
+    stateEls.edgeNodeCard.innerHTML = `<div class="empty-state">暂无节点心跳</div>`;
+    return;
+  }
+
+  const node = nodes[0];
+  const metrics = node.latest_metrics_json || {};
+  const ips = Array.isArray(node.ip_addresses) ? node.ip_addresses.join(" / ") : node.ip_addresses;
+  stateEls.edgeNodeCard.innerHTML = `
+    <div class="edge-node-title">
+      <strong>${escapeHtml(node.name || node.node_id)}</strong>
+      <span>${escapeHtml(node.latest_status || "unknown")}</span>
+    </div>
+    <dl class="edge-node-list">
+      <div><dt>节点 ID</dt><dd>${escapeHtml(node.node_id)}</dd></div>
+      <div><dt>IP</dt><dd>${escapeHtml(ips || "--")}</dd></div>
+      <div><dt>系统</dt><dd>${escapeHtml(node.os_name || "--")}</dd></div>
+      <div><dt>架构</dt><dd>${escapeHtml(node.arch || "--")}</dd></div>
+      <div><dt>最后心跳</dt><dd>${shortTime(node.latest_heartbeat_at || node.last_seen_at)}</dd></div>
+      <div><dt>磁盘可用</dt><dd>${formatBytes(metrics.disk_free_bytes)}</dd></div>
+      <div><dt>内存可用</dt><dd>${formatMemoryKb(metrics.mem_available_kb)}</dd></div>
+    </dl>
+  `;
 }
 
 async function refreshFaceUsers() {
@@ -278,7 +322,14 @@ function bindEvents() {
 }
 
 async function refreshAll() {
-  await Promise.allSettled([refreshStatus(), refreshHistory(), refreshProfile(), refreshFaceUsers(), refreshFaceGallery()]);
+  await Promise.allSettled([
+    refreshStatus(),
+    refreshHistory(),
+    refreshProfile(),
+    refreshEdgeNodes(),
+    refreshFaceUsers(),
+    refreshFaceGallery(),
+  ]);
 }
 
 bindEvents();
@@ -286,4 +337,5 @@ refreshAll();
 setInterval(() => {
   refreshStatus();
   refreshHistory();
+  refreshEdgeNodes();
 }, 3000);
