@@ -19,6 +19,8 @@ backend/
   data/                   本地 SQLite 数据库目录，.db 文件不提交
   scripts/
     simulate_orange_pi.py Orange Pi AIpro 20T 模拟上报脚本
+edge/
+  orange_pi_client.py     香橙派端 HTTP 上报与命令轮询脚本
 docs/
   official/              可共享的官方题目文档
   courseware/
