@@ -33,6 +33,18 @@ The model names have been checked and match the dataset:
 {0: "fire_extinguisher", 1: "drone"}
 ```
 
+Backend object detection adapter:
+
+```text
+object_service.py
+```
+
+Default object detection confidence:
+
+```text
+conf = 0.60
+```
+
 ## Face access
 
 Face recognition/access control is handled by InsightFace `buffalo_l` through:
