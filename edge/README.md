@@ -26,10 +26,19 @@ The current tested Orange Pi copy is:
 
 ## Current Behavior
 
+- Registers the Orange Pi node through `POST /api/edge/register`.
+- Sends node heartbeat/system metrics to `POST /api/edge/heartbeat`.
 - Sends mock sensor/status data to `POST /api/sensor/update`.
 - Polls pending backend commands from `GET /api/device/commands`.
 - Acknowledges consumed commands through `POST /api/device/commands/<id>/ack`.
 - Leaves actual GPIO/PWM execution as a small function to fill after pin mapping is confirmed.
+
+The backend stores edge-node status in:
+
+```text
+GET /api/edge/nodes
+GET /api/edge/heartbeats
+```
 
 ## Restart After Power Off
 

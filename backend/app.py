@@ -84,6 +84,9 @@ def row_to_dict(row: sqlite3.Row | None) -> dict[str, Any] | None:
         "raw_result_json",
         "raw_json",
         "spec_json",
+        "ip_addresses",
+        "metrics_json",
+        "latest_metrics_json",
         "bbox",
         "landmarks_5",
         "best_match",
@@ -154,6 +157,36 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 sent_at TEXT,
                 ack_at TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS edge_nodes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                node_id TEXT NOT NULL UNIQUE,
+                name TEXT,
+                role TEXT NOT NULL DEFAULT 'orange_pi_edge',
+                hostname TEXT,
+                os_name TEXT,
+                os_version TEXT,
+                kernel TEXT,
+                arch TEXT,
+                python_version TEXT,
+                client_version TEXT,
+                ip_addresses TEXT NOT NULL DEFAULT '[]',
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                last_seen_at TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS edge_heartbeats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                node_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'online',
+                ip_addresses TEXT NOT NULL DEFAULT '[]',
+                metrics_json TEXT NOT NULL DEFAULT '{}',
+                raw_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(node_id) REFERENCES edge_nodes(node_id)
             );
 
             CREATE TABLE IF NOT EXISTS detection_records (
@@ -290,6 +323,22 @@ def parse_int(value: Any, default: int | None = None) -> int | None:
         return default
 
 
+def normalize_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item for item in value.replace(",", " ").split() if item]
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def json_text(value: Any, default: Any) -> str:
+    if value is None:
+        value = default
+    return json.dumps(value, ensure_ascii=False)
+
+
 def make_identity(value: str) -> str:
     identity = re.sub(r"[^0-9A-Za-z_\-]+", "_", value.strip()).strip("_").lower()
     return identity or "user"
@@ -368,6 +417,8 @@ def create_app() -> Flask:
                 "hardware_profile": "/api/hardware/profile",
                 "status": "/api/status",
                 "health": "/api/health",
+                "edge_nodes": "/api/edge/nodes",
+                "edge_heartbeats": "/api/edge/heartbeats",
             }
         )
 
@@ -529,6 +580,205 @@ def create_app() -> Flask:
                 (limit,),
             ).fetchall()
         return jsonify({"ok": True, "records": [row_to_dict(row) for row in rows]})
+
+    @app.post("/api/edge/register")
+    def edge_register():
+        payload = request.get_json(silent=True) or {}
+        node_id = str(payload.get("node_id") or payload.get("hostname") or "").strip()
+        if not node_id:
+            return jsonify({"ok": False, "error": "node_id is required"}), 400
+
+        now = utc_now()
+        ip_addresses = normalize_string_list(payload.get("ip_addresses") or payload.get("ips"))
+        values = {
+            "node_id": node_id,
+            "name": str(payload.get("name") or node_id).strip(),
+            "role": str(payload.get("role") or "orange_pi_edge").strip(),
+            "hostname": payload.get("hostname"),
+            "os_name": payload.get("os_name"),
+            "os_version": payload.get("os_version"),
+            "kernel": payload.get("kernel"),
+            "arch": payload.get("arch"),
+            "python_version": payload.get("python_version"),
+            "client_version": payload.get("client_version"),
+            "ip_addresses": json_text(ip_addresses, []),
+            "raw_json": json_text(payload, {}),
+        }
+
+        with connect_db() as conn:
+            existing = conn.execute("SELECT id FROM edge_nodes WHERE node_id = ?", (node_id,)).fetchone()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE edge_nodes
+                    SET name = ?, role = ?, hostname = ?, os_name = ?, os_version = ?,
+                        kernel = ?, arch = ?, python_version = ?, client_version = ?,
+                        ip_addresses = ?, raw_json = ?, last_seen_at = ?, updated_at = ?
+                    WHERE node_id = ?
+                    """,
+                    (
+                        values["name"],
+                        values["role"],
+                        values["hostname"],
+                        values["os_name"],
+                        values["os_version"],
+                        values["kernel"],
+                        values["arch"],
+                        values["python_version"],
+                        values["client_version"],
+                        values["ip_addresses"],
+                        values["raw_json"],
+                        now,
+                        now,
+                        node_id,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO edge_nodes
+                        (node_id, name, role, hostname, os_name, os_version,
+                         kernel, arch, python_version, client_version, ip_addresses,
+                         raw_json, last_seen_at, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        values["node_id"],
+                        values["name"],
+                        values["role"],
+                        values["hostname"],
+                        values["os_name"],
+                        values["os_version"],
+                        values["kernel"],
+                        values["arch"],
+                        values["python_version"],
+                        values["client_version"],
+                        values["ip_addresses"],
+                        values["raw_json"],
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+            conn.commit()
+            row = conn.execute("SELECT * FROM edge_nodes WHERE node_id = ?", (node_id,)).fetchone()
+        return jsonify({"ok": True, "node": row_to_dict(row)})
+
+    @app.post("/api/edge/heartbeat")
+    def edge_heartbeat():
+        payload = request.get_json(silent=True) or {}
+        node_id = str(payload.get("node_id") or payload.get("hostname") or "").strip()
+        if not node_id:
+            return jsonify({"ok": False, "error": "node_id is required"}), 400
+
+        now = utc_now()
+        status_value = str(payload.get("status") or "online").strip() or "online"
+        ip_addresses = normalize_string_list(payload.get("ip_addresses") or payload.get("ips"))
+        metrics = payload.get("metrics") if isinstance(payload.get("metrics"), dict) else {}
+
+        with connect_db() as conn:
+            existing = conn.execute("SELECT id FROM edge_nodes WHERE node_id = ?", (node_id,)).fetchone()
+            if existing:
+                conn.execute(
+                    """
+                    UPDATE edge_nodes
+                    SET last_seen_at = ?, updated_at = ?,
+                        ip_addresses = COALESCE(NULLIF(?, '[]'), ip_addresses),
+                        client_version = COALESCE(?, client_version)
+                    WHERE node_id = ?
+                    """,
+                    (
+                        now,
+                        now,
+                        json_text(ip_addresses, []),
+                        payload.get("client_version"),
+                        node_id,
+                    ),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO edge_nodes
+                        (node_id, name, role, hostname, client_version, ip_addresses,
+                         raw_json, last_seen_at, created_at, updated_at)
+                    VALUES (?, ?, 'orange_pi_edge', ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        node_id,
+                        str(payload.get("name") or node_id).strip(),
+                        payload.get("hostname"),
+                        payload.get("client_version"),
+                        json_text(ip_addresses, []),
+                        json_text(payload, {}),
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+
+            cursor = conn.execute(
+                """
+                INSERT INTO edge_heartbeats
+                    (node_id, status, ip_addresses, metrics_json, raw_json, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    node_id,
+                    status_value,
+                    json_text(ip_addresses, []),
+                    json_text(metrics, {}),
+                    json_text(payload, {}),
+                    now,
+                ),
+            )
+            conn.commit()
+            node = conn.execute("SELECT * FROM edge_nodes WHERE node_id = ?", (node_id,)).fetchone()
+            heartbeat = conn.execute("SELECT * FROM edge_heartbeats WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        return jsonify({"ok": True, "node": row_to_dict(node), "heartbeat": row_to_dict(heartbeat)})
+
+    @app.get("/api/edge/nodes")
+    def edge_nodes():
+        with connect_db() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    n.*,
+                    h.status AS latest_status,
+                    h.metrics_json AS latest_metrics_json,
+                    h.created_at AS latest_heartbeat_at
+                FROM edge_nodes n
+                LEFT JOIN edge_heartbeats h ON h.id = (
+                    SELECT id FROM edge_heartbeats
+                    WHERE node_id = n.node_id
+                    ORDER BY id DESC
+                    LIMIT 1
+                )
+                ORDER BY COALESCE(n.last_seen_at, n.updated_at) DESC
+                """
+            ).fetchall()
+        return jsonify({"ok": True, "nodes": [row_to_dict(row) for row in rows]})
+
+    @app.get("/api/edge/heartbeats")
+    def edge_heartbeats():
+        limit = min(parse_int(request.args.get("limit"), 50) or 50, 200)
+        node_id = request.args.get("node_id")
+        with connect_db() as conn:
+            if node_id:
+                rows = conn.execute(
+                    """
+                    SELECT * FROM edge_heartbeats
+                    WHERE node_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (node_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM edge_heartbeats ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+        return jsonify({"ok": True, "heartbeats": [row_to_dict(row) for row in rows]})
 
     @app.post("/api/yolo/detect")
     def yolo_detect():
