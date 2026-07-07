@@ -30,19 +30,20 @@ DEFAULT_CAMERA_UPLOAD_DIR = DATA_DIR / "uploads" / "camera"
 DEFAULT_FACE_GALLERY_DIR = BASE_DIR.parent / "training" / "face_gallery"
 
 
-ORANGE_PI_AIPRO_20T_PROFILE = {
-    "name": "Orange Pi AIpro 20T",
-    "model": "Orange Pi AIpro (20T)",
+ORANGE_PI_AIPRO_PROFILE = {
+    "name": "Orange Pi AIpro",
+    "model": "Orange Pi AIpro (Ascend, variant to confirm)",
     "role": "hardware_edge_node",
-    "ai_compute": "20 TOPS",
+    "ai_compute": "Depends on assigned Ascend variant, for example 8 TOPS or 20 TOPS",
     "cpu": "4-core 64-bit processor + AI processor",
-    "memory": "12GB/24GB LPDDR4X",
-    "networking": "dual 2.5G Ethernet, Wi-Fi, Bluetooth",
-    "storage": "eMMC module, SATA/NVMe SSD, SPI flash, microSD",
+    "memory": "Depends on assigned variant, for example 8GB/16GB LPDDR4X",
+    "networking": "Ethernet / Wi-Fi depending on setup",
+    "storage": "microSD, eMMC module, SATA/NVMe SSD depending on variant",
     "camera": "2 x MIPI CSI 4-lane camera interfaces",
     "expansion": "40-pin header supporting GPIO, UART, I2C, SPI, I2S, PWM",
     "supported_os": "Ubuntu, openEuler",
-    "source_url": "https://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-AIpro%2820t%29.html",
+    "source_url": "http://www.orangepi.cn/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-AIpro.html",
+    "note": "Board is expected to be an Ascend-based Orange Pi AIpro. Confirm the exact 8T/20T variant after replacement.",
 }
 
 
@@ -152,7 +153,7 @@ def init_db() -> None:
                 light_level INTEGER,
                 fan_on INTEGER,
                 lock_open INTEGER,
-                source TEXT NOT NULL DEFAULT 'orange_pi_aipro_20t',
+                source TEXT NOT NULL DEFAULT 'orange_pi_aipro',
                 raw_json TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
@@ -279,7 +280,7 @@ def init_db() -> None:
         ensure_column(conn, "access_logs", "top_matches", "TEXT")
         ensure_column(conn, "access_logs", "skipped", "TEXT")
 
-        existing_profile = conn.execute("SELECT id FROM hardware_profiles LIMIT 1").fetchone()
+        existing_profile = conn.execute("SELECT * FROM hardware_profiles LIMIT 1").fetchone()
         if existing_profile is None:
             conn.execute(
                 """
@@ -288,12 +289,28 @@ def init_db() -> None:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    ORANGE_PI_AIPRO_20T_PROFILE["name"],
-                    ORANGE_PI_AIPRO_20T_PROFILE["model"],
-                    ORANGE_PI_AIPRO_20T_PROFILE["role"],
-                    json.dumps(ORANGE_PI_AIPRO_20T_PROFILE, ensure_ascii=False),
-                    ORANGE_PI_AIPRO_20T_PROFILE["source_url"],
+                    ORANGE_PI_AIPRO_PROFILE["name"],
+                    ORANGE_PI_AIPRO_PROFILE["model"],
+                    ORANGE_PI_AIPRO_PROFILE["role"],
+                    json.dumps(ORANGE_PI_AIPRO_PROFILE, ensure_ascii=False),
+                    ORANGE_PI_AIPRO_PROFILE["source_url"],
                     utc_now(),
+                ),
+            )
+        elif "20T" in (existing_profile["model"] or existing_profile["name"] or ""):
+            conn.execute(
+                """
+                UPDATE hardware_profiles
+                SET name = ?, model = ?, role = ?, spec_json = ?, source_url = ?
+                WHERE id = ?
+                """,
+                (
+                    ORANGE_PI_AIPRO_PROFILE["name"],
+                    ORANGE_PI_AIPRO_PROFILE["model"],
+                    ORANGE_PI_AIPRO_PROFILE["role"],
+                    json.dumps(ORANGE_PI_AIPRO_PROFILE, ensure_ascii=False),
+                    ORANGE_PI_AIPRO_PROFILE["source_url"],
+                    existing_profile["id"],
                 ),
             )
 
@@ -605,7 +622,7 @@ def create_app() -> Flask:
                     next_values["light_level"],
                     next_values["fan_on"],
                     next_values["lock_open"],
-                    payload.get("source", "orange_pi_aipro_20t"),
+                    payload.get("source", "orange_pi_aipro"),
                     json.dumps(payload, ensure_ascii=False),
                     now,
                 ),

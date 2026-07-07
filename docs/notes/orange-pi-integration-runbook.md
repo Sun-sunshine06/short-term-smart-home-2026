@@ -1,4 +1,4 @@
-# Orange Pi AIpro 20T 通用联调与重启手册
+# Orange Pi AIpro 昇腾开发板通用联调与重启手册
 
 > 更新时间：2026-07-07。本文面向任意小组成员，不绑定某一台电脑、某一个 IP 或某一个用户目录。使用前先把占位符替换成自己的实际环境。
 
@@ -12,7 +12,7 @@
 | `<BACKEND_BASE_URL>` | 后端完整地址 | `http://<BACKEND_HOST>:<BACKEND_PORT>` |
 | `<EDGE_HOME>` | Orange Pi 上保存边缘脚本的目录 | `~/smart_home_edge` |
 | `<EDGE_CLIENT>` | Orange Pi 边缘脚本路径 | `<EDGE_HOME>/orange_pi_client.py` |
-| `<NODE_ID>` | Orange Pi 节点 ID | `orange-pi-aipro-20t` |
+| `<NODE_ID>` | Orange Pi 节点 ID | `orange-pi-aipro-ascend` |
 | `<TEST_IMAGE>` | Orange Pi 上待上传的测试图片 | `<EDGE_HOME>/test_images/demo.jpg` |
 
 后续命令默认：
@@ -21,7 +21,7 @@
 <BACKEND_PORT> = 5000
 <EDGE_HOME> = ~/smart_home_edge
 <EDGE_CLIENT> = ~/smart_home_edge/orange_pi_client.py
-<NODE_ID> = orange-pi-aipro-20t
+<NODE_ID> = orange-pi-aipro-ascend
 ```
 
 ## 当前链路目标
@@ -29,7 +29,7 @@
 第一版采用更稳的分工：
 
 ```text
-Orange Pi AIpro 20T
+Orange Pi AIpro 昇腾开发板
 -> 采集模拟信号 / 读取测试图片
 -> HTTP 上传到后端电脑
 -> Flask 后端
@@ -37,7 +37,20 @@ Orange Pi AIpro 20T
 -> Web GUI 展示
 ```
 
-YOLO 和人脸识别先运行在后端电脑上。Orange Pi 负责采集、上传和执行控制命令，不要求第一版在 Orange Pi 上部署 YOLO 模型。
+YOLO 和人脸识别先运行在后端电脑上。Orange Pi 负责采集、上传和执行控制命令，不要求第一版在 Orange Pi 上部署 YOLO 模型。若后续老师要求展示昇腾板端推理，再单独接 CANN/MindSpore/ACLLite 环境。
+
+## 开发板替换影响
+
+如果领取到的不是昇腾版 Orange Pi AIpro，而是混入的鲲鹏开发板，应按老师要求更换为昇腾开发板。更换后对本项目第一版流程的影响如下：
+
+- 不影响：Flask 后端、SQLite 数据库、Web GUI、HTTP 上报、命令轮询、图片上传接口；
+- 不影响：YOLO 第一版仍然先在后端电脑运行，Orange Pi 只负责把本地图片上传给后端；
+- 需要重新确认：开发板系统镜像、默认用户、IP 获取方式、Python 版本、网络连接方式；
+- 需要重新确认：GPIO/PWM/I2C/摄像头接口的实际可用方式；
+- 需要更新显示信息：Web GUI 和硬件 Profile 不应写死 `20T`，应按实际换到的昇腾型号填写；
+- 暂不作为第一版必做：CANN、MindSpore、ACLLite、Jupyter Lab、板端目标检测样例。
+
+老师发的《手把手教你搭建 OrangePi AIpro 开发环境》主要用于昇腾板系统准备和 AI 环境搭建。它说明 AIpro 走昇腾路线，涉及 Ubuntu 镜像烧录、SSH/网线/Wi-Fi 登录、CANN、ACLLite、MindSpore 和 Jupyter Lab 示例。除非验收要求板端 AI 推理，否则这些内容不会改变当前“Orange Pi 上传，后端推理”的软件闭环。
 
 ## 已验证能力
 

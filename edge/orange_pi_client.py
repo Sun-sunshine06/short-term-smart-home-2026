@@ -241,7 +241,7 @@ def poll_commands(base_url: str, timeout: float, acknowledge: bool) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Orange Pi AIpro 20T edge client.")
+    parser = argparse.ArgumentParser(description="Orange Pi AIpro edge client.")
     parser.add_argument(
         "--base-url",
         default=os.environ.get("SMART_HOME_BACKEND", "http://127.0.0.1:5000"),
@@ -250,9 +250,9 @@ def main() -> None:
     parser.add_argument("--interval", type=float, default=2.0, help="Seconds between sensor updates.")
     parser.add_argument("--count", type=int, default=0, help="Number of loops; 0 means forever.")
     parser.add_argument("--timeout", type=float, default=5.0, help="HTTP timeout seconds.")
-    parser.add_argument("--source", default="orange_pi_aipro_20t", help="Sensor source name.")
+    parser.add_argument("--source", default="orange_pi_aipro", help="Sensor source name.")
     parser.add_argument("--node-id", default=os.environ.get("ORANGE_PI_NODE_ID"), help="Stable edge node id.")
-    parser.add_argument("--name", default="Orange Pi AIpro 20T", help="Human-readable node name.")
+    parser.add_argument("--name", default="Orange Pi AIpro", help="Human-readable node name.")
     parser.add_argument("--role", default="orange_pi_edge", help="Node role stored by the backend.")
     parser.add_argument("--heartbeat-every", type=int, default=1, help="Send heartbeat every N loops; 0 disables it.")
     parser.add_argument("--upload-image", help="Upload one local image from Orange Pi to backend YOLO flow, then exit by default.")

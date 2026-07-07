@@ -1,6 +1,6 @@
 # Orange Pi Edge Client
 
-This directory contains the Orange Pi AIpro 20T edge-side client.
+This directory contains the Orange Pi AIpro edge-side client.
 
 The client uses only Python standard library modules, so it can run on openEuler, Ubuntu, or similar Linux systems without installing extra packages.
 

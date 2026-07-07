@@ -2,7 +2,7 @@
 
 Flask + SQLite backend for the first smart-home integration test branch.
 
-This version does not require real hardware. It seeds an Orange Pi AIpro 20T hardware profile from official public specifications and provides mock-friendly APIs for frontend, hardware, YOLO, and face-recognition integration.
+This version does not require real hardware. It seeds a generic Ascend-based Orange Pi AIpro hardware profile and provides mock-friendly APIs for frontend, hardware, YOLO, and face-recognition integration.
 
 ## Run
 

@@ -10,7 +10,7 @@ import requests
 def build_payload(step: int) -> dict:
     temperature = round(25.0 + random.random() * 6.0, 1)
     return {
-        "source": "orange_pi_aipro_20t_simulator",
+        "source": "orange_pi_aipro_simulator",
         "temperature": temperature,
         "door_open": step % 12 in {0, 1},
         "window_open": step % 20 in {5, 6, 7},
@@ -21,7 +21,7 @@ def build_payload(step: int) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Simulate Orange Pi AIpro 20T sensor uploads.")
+    parser = argparse.ArgumentParser(description="Simulate Orange Pi AIpro sensor uploads.")
     parser.add_argument("--base-url", default="http://127.0.0.1:5000", help="Backend base URL.")
     parser.add_argument("--interval", type=float, default=2.0, help="Seconds between updates.")
     parser.add_argument("--count", type=int, default=0, help="Number of updates; 0 means forever.")

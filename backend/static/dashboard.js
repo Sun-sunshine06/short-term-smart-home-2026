@@ -116,11 +116,11 @@ async function refreshHistory() {
 
 async function refreshProfile() {
   const data = await api("/api/hardware/profile").catch(() => ({
-    name: "Orange Pi AIpro 20T",
+    name: "Orange Pi AIpro",
     spec_json: {
-      ai_compute: "20 TOPS",
-      memory: "12GB/24GB LPDDR4X",
-      networking: "dual 2.5G Ethernet, Wi-Fi, Bluetooth",
+      ai_compute: "按实际昇腾型号确认",
+      memory: "按实际昇腾型号确认",
+      networking: "Ethernet / Wi-Fi depending on setup",
       expansion: "40-pin GPIO, UART, I2C, SPI, I2S, PWM",
       supported_os: "Ubuntu, openEuler",
     },

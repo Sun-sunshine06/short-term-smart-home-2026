@@ -4,18 +4,18 @@
 
 ## 已确认方向
 
-- 验收演示预计使用 **Orange Pi AIpro 20T + 模拟信号/外接传感器**，观察前端 GUI 的状态变化。
+- 验收演示预计使用 **Orange Pi AIpro 昇腾开发板 + 模拟信号/外接传感器**，观察前端 GUI 的状态变化。具体 8T/20T 型号以换板后实物为准。
 - 后端和算法服务先运行在 **性能较稳定的游戏本/本地电脑** 上。
 - 前端使用 **Web GUI**，演示时可通过域名 `wudilyy666.top` 访问；如果网络配置不稳定，保留局域网 IP 或本机访问作为备用。
-- Orange Pi AIpro 20T 与后端通信先走 **HTTP**，不把 MQTT 作为第一版必做项。
+- Orange Pi AIpro 与后端通信先走 **HTTP**，不把 MQTT 作为第一版必做项。
 - YOLO 优先接入视觉组已经训练好的模型；预训练模型作为备用方案。
 - 人脸识别门禁改为预留 **InsightFace buffalo_l** 方案，不再用 YOLO 做人脸门禁；若环境集成困难，再降级为更简单的演示方案。
 
-## Orange Pi AIpro 20T 角色约定
+## Orange Pi AIpro 角色约定
 
-Orange Pi AIpro 20T 是本项目的硬件/边缘端核心设备。根据官方资料，它具备 20TOPS AI 算力、12GB/24GB LPDDR4X 内存、双 2.5G 网口等能力，后续有条件时可以承载更多边缘计算任务。
+Orange Pi AIpro 昇腾开发板是本项目的硬件/边缘端核心设备。由于已领取设备可能存在鲲鹏/昇腾混发，具体型号和规格以换板后的实物为准。老师发的开发环境文档示例为昇腾路线 OrangePi AIpro，涉及 CANN、MindSpore、ACLLite、Jupyter Lab 等板端 AI 环境。
 
-但为了第一版稳定验收，建议先把 Orange Pi AIpro 20T 定位为：
+但为了第一版稳定验收，建议先把 Orange Pi AIpro 定位为：
 
 - 采集模拟信号或外接传感器状态；
 - 控制门锁/舵机、灯光、风扇等执行器；
@@ -23,14 +23,14 @@ Orange Pi AIpro 20T 是本项目的硬件/边缘端核心设备。根据官方�
 - 通过轮询或接收 HTTP 请求执行后端下发的控制命令；
 - 如摄像头接在 Orange Pi 上，则负责拍照并把图片上传给后端。
 
-第一版暂不强制把 Flask 后端、数据库、YOLO 或人脸识别全部部署到 Orange Pi 上。原因是 AIpro 20T 的 NPU/Ascend/CANN/MindSpore 推理环境需要额外适配，短期内容易变成环境风险。后端和算法先跑在游戏本上，Orange Pi 先稳定完成硬件交互。
+第一版暂不强制把 Flask 后端、数据库、YOLO 或人脸识别全部部署到 Orange Pi 上。原因是昇腾/CANN/MindSpore 推理环境需要额外适配，短期内容易变成环境风险。后端和算法先跑在游戏本上，Orange Pi 先稳定完成硬件交互。
 
 ## 第一版目标
 
 第一版先跑通完整链路：
 
 ```text
-Orange Pi AIpro 20T / 硬件模拟信号
+Orange Pi AIpro / 硬件模拟信号
   -> HTTP 上报到后端
   -> 后端写入 SQLite / 更新当前状态
   -> Web GUI 实时展示状态变化
@@ -41,7 +41,7 @@ Orange Pi AIpro 20T / 硬件模拟信号
 图像链路的第一版目标：
 
 ```text
-Orange Pi AIpro 20T / 摄像头或测试图片
+Orange Pi AIpro / 摄像头或测试图片
   -> 图片先进入 Orange Pi
   -> Orange Pi 拍照或读取本地测试图片
   -> POST /api/camera/upload 上传给后端
@@ -53,11 +53,23 @@ Orange Pi AIpro 20T / 摄像头或测试图片
 
 第一版不追求复杂算法训练或实时视频高帧率，优先保证演示稳定。
 
+## 开发板替换后的判断
+
+当前已知：老师通知部分鲲鹏开发板混入昇腾开发板，需要换成昇腾开发板；配套文档《手把手教你搭建 OrangePi AIpro 开发环境》主要说明昇腾版 AIpro 的系统镜像、联网、CANN、ACLLite、MindSpore 和 Jupyter Lab 目标检测样例。
+
+对本方案的影响：
+
+- 第一版主流程不变：Orange Pi 负责采集/上传，后端电脑负责 Flask、SQLite、YOLO、人脸识别和 Web GUI；
+- 需要重新确认换到的开发板型号、系统镜像、默认用户、网络连接方式；
+- 硬件 Profile 和前端展示不能继续写死 `20T`，应改为“Orange Pi AIpro 昇腾开发板，具体型号待确认”；
+- 若老师要求展示板端 AI 推理，再单独开任务研究 CANN/MindSpore/ACLLite、模型转换和板端 YOLO 推理；
+- 当前验收优先保证 HTTP、图片上传、数据库、GUI、后端 YOLO 记录闭环稳定。
+
 ## 需要向硬件组确认的接口问题
 
 ### 1. 硬件端上报方式
 
-需要确认 Orange Pi AIpro 20T 是否能通过 HTTP 向后端发送状态数据。
+需要确认 Orange Pi AIpro 是否能通过 HTTP 向后端发送状态数据。
 
 建议接口：
 
@@ -110,12 +122,12 @@ Orange Pi 定时 GET /api/device/commands
 需要确认摄像头接在：
 
 - 后端电脑；
-- Orange Pi AIpro 20T；
+- Orange Pi AIpro；
 - 其他硬件设备。
 
 目前建议第一版按“图片先进入 Orange Pi，Orange Pi 上传，游戏本后端推理”推进：摄像头或测试图片由 Orange Pi 负责采集/读取和上传，但 YOLO 和人脸识别先在后端电脑运行，稳定性更高。
 
-如果摄像头接在 Orange Pi AIpro 20T 上，需要确认：
+如果摄像头接在 Orange Pi AIpro 上，需要确认：
 
 - Orange Pi 如何拍照；
 - 图片如何传给后端，第一版建议走 `POST /api/camera/upload`；
@@ -127,7 +139,7 @@ Orange Pi 定时 GET /api/device/commands
 
 需要硬件组确认：
 
-- Orange Pi AIpro 20T 使用什么系统：Ubuntu、openEuler、Orange Pi OS，还是其他；
+- Orange Pi AIpro 使用什么系统：Ubuntu、openEuler、Orange Pi OS，还是其他；
 - 是否能连接到和后端电脑相同的局域网；
 - 是否能稳定访问后端电脑的 IP 和端口；
 - 是否能运行 Python 脚本，或使用其他语言发送 HTTP 请求；
@@ -187,7 +199,7 @@ GET  /api/history           查询历史记录
 
 1. 后端最终运行在哪台电脑上，是否确定使用游戏本？
 2. 域名 `wudilyy666.top` 谁负责解析、反代、内网穿透或端口转发？
-3. Orange Pi AIpro 20T 能否按 JSON 格式走 HTTP 上报？
+3. Orange Pi AIpro 能否按 JSON 格式走 HTTP 上报？
 4. 控制链路采用“后端主动发给 Orange Pi”还是“Orange Pi 轮询后端命令”？
 5. 摄像头最终接在哪里？
 6. YOLO 组能否提供正式模型文件、类别表、测试图片和 `detect_image(image_path)`？
@@ -197,7 +209,7 @@ GET  /api/history           查询历史记录
 
 ## 建议下一步
 
-- 先向硬件组确认 Orange Pi AIpro 20T 的系统环境、HTTP 接口、模拟信号含义、摄像头连接方式。
+- 先向硬件组确认 Orange Pi AIpro 的系统环境、HTTP 接口、模拟信号含义、摄像头连接方式。
 - 软件组先做 Flask + SQLite + Web GUI 空壳，用模拟数据跑通页面。
 - Orange Pi 接口未定前，后端先提供 `/api/sensor/update` 和 `/api/status`，方便硬件组联调。
 - YOLO、人脸识别先独立做 demo，等后端基本接口稳定后再接入 GUI。

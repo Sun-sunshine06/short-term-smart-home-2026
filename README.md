@@ -8,7 +8,7 @@
 
 当前分支：`feature/web-gui`
 
-`feature/web-gui` 分支基于 `test` 分支，专门用于开发第一版 Web GUI。当前后端使用 Flask + SQLite，并用 Orange Pi AIpro 20T 官方规格和模拟信号作为测试数据来源。
+`feature/web-gui` 分支基于 `test` 分支，专门用于开发第一版 Web GUI。当前后端使用 Flask + SQLite，并用 Orange Pi AIpro 昇腾开发板通用规格和模拟信号作为测试数据来源。
 
 ## 仓库结构
 
@@ -18,7 +18,7 @@ backend/
   requirements.txt        后端 Python 依赖
   data/                   本地 SQLite 数据库目录，.db 文件不提交
   scripts/
-    simulate_orange_pi.py Orange Pi AIpro 20T 模拟上报脚本
+    simulate_orange_pi.py Orange Pi AIpro 模拟上报脚本
 edge/
   orange_pi_client.py     香橙派端 HTTP 上报与命令轮询脚本
 docs/
@@ -94,7 +94,7 @@ POST /api/face/users/<id>/images
 GET  /api/face/gallery
 ```
 
-没有真实硬件时，可以用模拟脚本测试 Orange Pi AIpro 20T 数据上报：
+没有真实硬件时，可以用模拟脚本测试 Orange Pi AIpro 数据上报：
 
 ```powershell
 cd <PROJECT_ROOT>\backend
