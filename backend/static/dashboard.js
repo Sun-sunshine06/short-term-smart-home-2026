@@ -8,6 +8,7 @@ const stateEls = {
   light: qs("#lightLevel"),
   fan: qs("#fanState"),
   lock: qs("#lockState"),
+  camera: qs("#cameraState"),
   history: qs("#historyTable"),
   profile: qs("#hardwareProfile"),
   feedback: qs("#controlFeedback"),
@@ -15,6 +16,12 @@ const stateEls = {
   brightnessOutput: qs("#brightnessOutput"),
   imagePath: qs("#imagePath"),
   visionResult: qs("#visionResult"),
+  visionUpdatedAt: qs("#visionUpdatedAt"),
+  latestCameraImage: qs("#latestCameraImage"),
+  cameraImageEmpty: qs("#cameraImageEmpty"),
+  visionModel: qs("#visionModel"),
+  visionConfidence: qs("#visionConfidence"),
+  visionLabels: qs("#visionLabels"),
   faceUserName: qs("#faceUserName"),
   faceIdentity: qs("#faceIdentity"),
   faceImagePath: qs("#faceImagePath"),
@@ -64,6 +71,12 @@ function formatMemoryKb(value) {
   return formatBytes(number * 1024);
 }
 
+function imageUrl(path, version = "") {
+  if (!path) return "";
+  const suffix = version ? `&v=${encodeURIComponent(version)}` : "";
+  return `/api/files/image?path=${encodeURIComponent(path)}${suffix}`;
+}
+
 async function api(path, options = {}) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
@@ -85,10 +98,72 @@ async function refreshStatus() {
     stateEls.light.textContent = `${data.light_level ?? 0}%`;
     stateEls.fan.textContent = boolText(data.fan_on, "运行", "停止");
     stateEls.lock.textContent = boolText(data.lock_open, "已开", "已锁");
+    stateEls.camera.textContent = boolText(data.camera_online, "在线", "离线");
   } catch (error) {
     stateEls.connection.textContent = "离线";
     stateEls.connection.classList.add("offline");
   }
+}
+
+function renderLatestYolo(record) {
+  if (!record) {
+    stateEls.visionUpdatedAt.textContent = "等待摄像头画面";
+    stateEls.visionModel.textContent = "--";
+    stateEls.visionConfidence.textContent = "--";
+    stateEls.visionLabels.innerHTML = `<span class="label-chip">暂无</span>`;
+    stateEls.latestCameraImage.removeAttribute("src");
+    stateEls.latestCameraImage.parentElement.classList.remove("has-image");
+    stateEls.visionResult.textContent = "等待识别结果";
+    return;
+  }
+
+  const imagePath = record.result_image_path || record.image_path;
+  const labels = Array.isArray(record.labels) && record.labels.length ? record.labels : ["未识别"];
+  const model = record.model_name || "--";
+  const confidence = Number(record.confidence);
+
+  stateEls.visionUpdatedAt.textContent = shortTime(record.created_at);
+  stateEls.visionModel.textContent = model;
+  stateEls.visionConfidence.textContent = Number.isFinite(confidence) ? confidence.toFixed(2) : "--";
+  stateEls.visionLabels.innerHTML = labels
+    .map((label) => `<span class="label-chip">${escapeHtml(label)}</span>`)
+    .join("");
+  stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
+  if (record.image_path) {
+    stateEls.imagePath.value = record.image_path;
+  }
+
+  if (imagePath) {
+    stateEls.latestCameraImage.src = imageUrl(imagePath, record.id || record.created_at || Date.now());
+    stateEls.latestCameraImage.parentElement.classList.add("has-image");
+  } else {
+    stateEls.latestCameraImage.removeAttribute("src");
+    stateEls.latestCameraImage.parentElement.classList.remove("has-image");
+  }
+}
+
+async function refreshLatestYolo() {
+  const data = await api("/api/yolo/latest").catch(() => ({ record: null }));
+  renderLatestYolo(data.record);
+}
+
+function renderLatestFace(record) {
+  if (!record) {
+    stateEls.faceFeedback.textContent = "等待门禁识别";
+    return;
+  }
+
+  const matched = Boolean(record.matched);
+  const action = matched ? "门禁通过" : "门禁拒绝";
+  const user = record.user_name || record.user_id || "未知人员";
+  const score = Number(record.score);
+  const scoreText = Number.isFinite(score) ? `，相似度 ${score.toFixed(2)}` : "";
+  stateEls.faceFeedback.textContent = `${action}：${user}${scoreText}，${shortTime(record.created_at)}`;
+}
+
+async function refreshLatestFace() {
+  const data = await api("/api/face/latest").catch(() => ({ record: null }));
+  renderLatestFace(data.record);
 }
 
 async function refreshHistory() {
@@ -239,6 +314,12 @@ async function runVision(kind) {
     body: JSON.stringify({ image_path: imagePath }),
   });
   stateEls.visionResult.textContent = JSON.stringify(data.record, null, 2);
+  if (kind !== "face") {
+    renderLatestYolo(data.record);
+  } else {
+    renderLatestFace(data.record);
+    await refreshStatus();
+  }
 }
 
 async function createFaceUser() {
@@ -329,6 +410,8 @@ async function refreshAll() {
     refreshEdgeNodes(),
     refreshFaceUsers(),
     refreshFaceGallery(),
+    refreshLatestYolo(),
+    refreshLatestFace(),
   ]);
 }
 
@@ -338,4 +421,6 @@ setInterval(() => {
   refreshStatus();
   refreshHistory();
   refreshEdgeNodes();
+  refreshLatestYolo();
+  refreshLatestFace();
 }, 3000);

@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from insightface.app import FaceAnalysis
 DEFAULT_MODEL_PACK = "buffalo_l"
 DEFAULT_COSINE_SIMILARITY_THRESHOLD = 0.40
 DEFAULT_COSINE_DISTANCE_THRESHOLD = 1.0 - DEFAULT_COSINE_SIMILARITY_THRESHOLD
+DEFAULT_MODEL_ROOT = Path(__file__).resolve().parents[1] / "local" / "models" / "insightface"
 
 
 def parse_args() -> argparse.Namespace:
@@ -57,7 +59,8 @@ def save_crop(image: np.ndarray, box: list[float], path: Path) -> None:
 class InsightFaceRecognizer:
     def __init__(self, model_pack: str, det_size: int) -> None:
         self.model_pack = model_pack
-        self.app = FaceAnalysis(name=model_pack, providers=["CPUExecutionProvider"])
+        model_root = os.environ.get("INSIGHTFACE_HOME", str(DEFAULT_MODEL_ROOT))
+        self.app = FaceAnalysis(name=model_pack, root=model_root, providers=["CPUExecutionProvider"])
         self.app.prepare(ctx_id=-1, det_size=(det_size, det_size))
 
     def get_largest_face(self, image_path: Path) -> dict[str, Any]:
