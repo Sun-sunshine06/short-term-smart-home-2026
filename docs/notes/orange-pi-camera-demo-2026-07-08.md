@@ -163,3 +163,12 @@ Then restart the backend from the same venv.
 ```text
 Orange Pi camera -> backend /api/camera/upload -> YOLO26s real inference -> Web GUI status/history
 ```
+
+## 中文演示提示
+
+- 本次成功结果记录的是另一台真实香橙派 `orangepiaipro` 的运行数据，不是本机模拟数据。
+- 最终演示建议沿用这次已跑通的拓扑：香橙派连接 USB 摄像头并持续上传图片，本电脑作为后端、数据库、Web GUI 和 YOLO 推理主机。
+- 当前已验证的本电脑后端地址是 `http://10.75.29.155:5000/`，Web GUI 也打开这个地址。
+- `10.75.29.155` 是当前网络下本电脑的 IPv4；如果换 Wi-Fi、热点、网线或路由器，演示前必须重新查看本电脑 IPv4，并同步修改香橙派 `--base-url`。
+- 香橙派端已验证的节点 ID 是 `orange-pi-aipro-remote`，摄像头设备是 `/dev/video0`。
+- 演示主线应优先展示：摄像头实时帧上传 -> 后端生成 YOLO26s 真实推理记录 -> Web GUI 状态、历史和最新识别结果刷新。
