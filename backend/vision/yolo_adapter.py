@@ -7,6 +7,7 @@ from typing import Any
 
 
 DEFAULT_MODEL_PATH = "training/models/object_fire400_drone2800_yolo26s_v1_best.pt"
+DEFAULT_CONFIDENCE_THRESHOLD = 0.60
 
 
 def _project_root() -> Path:
@@ -27,6 +28,16 @@ def _relative_for_response(path: Path) -> str:
         return path.relative_to(_project_root()).as_posix()
     except ValueError:
         return str(path)
+
+
+def _confidence_threshold() -> float:
+    raw_value = os.environ.get("YOLO_CONFIDENCE")
+    if not raw_value:
+        return DEFAULT_CONFIDENCE_THRESHOLD
+    try:
+        return float(raw_value)
+    except ValueError:
+        return DEFAULT_CONFIDENCE_THRESHOLD
 
 
 @lru_cache(maxsize=1)
@@ -62,6 +73,7 @@ def _mock_detection(image_path: str) -> dict[str, Any]:
             "name": "YOLO26s-mock",
             "weights": _relative_for_response(model_path),
             "mode": "mock",
+            "conf": _confidence_threshold(),
         },
     }
 
@@ -83,7 +95,8 @@ def detect_image(image_path: str) -> dict[str, Any]:
         result["model"]["status"] = status
         return result
 
-    results = model(image_path)
+    conf = _confidence_threshold()
+    results = model.predict(source=image_path, conf=conf, verbose=False)
     first = results[0]
     detections: list[dict[str, Any]] = []
     names = getattr(first, "names", {}) or {}
@@ -102,7 +115,7 @@ def detect_image(image_path: str) -> dict[str, Any]:
         )
 
     result_image_path = image_path
-    if os.environ.get("YOLO_SAVE_RESULTS", "0") == "1":
+    if os.environ.get("YOLO_SAVE_RESULTS", "1") == "1":
         result_dir = _project_root() / "backend" / "static" / "results"
         result_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -118,5 +131,6 @@ def detect_image(image_path: str) -> dict[str, Any]:
             "name": "YOLO26s",
             "weights": _relative_for_response(model_path),
             "status": status,
+            "conf": conf,
         },
     }

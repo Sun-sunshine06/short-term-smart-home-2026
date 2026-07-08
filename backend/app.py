@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
 try:
@@ -30,19 +30,20 @@ DEFAULT_CAMERA_UPLOAD_DIR = DATA_DIR / "uploads" / "camera"
 DEFAULT_FACE_GALLERY_DIR = BASE_DIR.parent / "training" / "face_gallery"
 
 
-ORANGE_PI_AIPRO_20T_PROFILE = {
-    "name": "Orange Pi AIpro 20T",
-    "model": "Orange Pi AIpro (20T)",
+ORANGE_PI_AIPRO_PROFILE = {
+    "name": "Orange Pi AIpro",
+    "model": "Orange Pi AIpro (Ascend, variant to confirm)",
     "role": "hardware_edge_node",
-    "ai_compute": "20 TOPS",
+    "ai_compute": "Depends on assigned Ascend variant, for example 8 TOPS or 20 TOPS",
     "cpu": "4-core 64-bit processor + AI processor",
-    "memory": "12GB/24GB LPDDR4X",
-    "networking": "dual 2.5G Ethernet, Wi-Fi, Bluetooth",
-    "storage": "eMMC module, SATA/NVMe SSD, SPI flash, microSD",
+    "memory": "Depends on assigned variant, for example 8GB/16GB LPDDR4X",
+    "networking": "Ethernet / Wi-Fi depending on setup",
+    "storage": "microSD, eMMC module, SATA/NVMe SSD depending on variant",
     "camera": "2 x MIPI CSI 4-lane camera interfaces",
     "expansion": "40-pin header supporting GPIO, UART, I2C, SPI, I2S, PWM",
     "supported_os": "Ubuntu, openEuler",
-    "source_url": "https://www.orangepi.org/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-AIpro%2820t%29.html",
+    "source_url": "http://www.orangepi.cn/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-AIpro.html",
+    "note": "Board is expected to be an Ascend-based Orange Pi AIpro. Confirm the exact 8T/20T variant after replacement.",
 }
 
 
@@ -152,7 +153,7 @@ def init_db() -> None:
                 light_level INTEGER,
                 fan_on INTEGER,
                 lock_open INTEGER,
-                source TEXT NOT NULL DEFAULT 'orange_pi_aipro_20t',
+                source TEXT NOT NULL DEFAULT 'orange_pi_aipro',
                 raw_json TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
@@ -279,7 +280,7 @@ def init_db() -> None:
         ensure_column(conn, "access_logs", "top_matches", "TEXT")
         ensure_column(conn, "access_logs", "skipped", "TEXT")
 
-        existing_profile = conn.execute("SELECT id FROM hardware_profiles LIMIT 1").fetchone()
+        existing_profile = conn.execute("SELECT * FROM hardware_profiles LIMIT 1").fetchone()
         if existing_profile is None:
             conn.execute(
                 """
@@ -288,12 +289,28 @@ def init_db() -> None:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    ORANGE_PI_AIPRO_20T_PROFILE["name"],
-                    ORANGE_PI_AIPRO_20T_PROFILE["model"],
-                    ORANGE_PI_AIPRO_20T_PROFILE["role"],
-                    json.dumps(ORANGE_PI_AIPRO_20T_PROFILE, ensure_ascii=False),
-                    ORANGE_PI_AIPRO_20T_PROFILE["source_url"],
+                    ORANGE_PI_AIPRO_PROFILE["name"],
+                    ORANGE_PI_AIPRO_PROFILE["model"],
+                    ORANGE_PI_AIPRO_PROFILE["role"],
+                    json.dumps(ORANGE_PI_AIPRO_PROFILE, ensure_ascii=False),
+                    ORANGE_PI_AIPRO_PROFILE["source_url"],
                     utc_now(),
+                ),
+            )
+        elif "20T" in (existing_profile["model"] or existing_profile["name"] or ""):
+            conn.execute(
+                """
+                UPDATE hardware_profiles
+                SET name = ?, model = ?, role = ?, spec_json = ?, source_url = ?
+                WHERE id = ?
+                """,
+                (
+                    ORANGE_PI_AIPRO_PROFILE["name"],
+                    ORANGE_PI_AIPRO_PROFILE["model"],
+                    ORANGE_PI_AIPRO_PROFILE["role"],
+                    json.dumps(ORANGE_PI_AIPRO_PROFILE, ensure_ascii=False),
+                    ORANGE_PI_AIPRO_PROFILE["source_url"],
+                    existing_profile["id"],
                 ),
             )
 
@@ -356,6 +373,29 @@ def path_for_response(path: Path) -> str:
         return path.relative_to(BASE_DIR.parent).as_posix()
     except ValueError:
         return str(path)
+
+
+def resolve_image_path_for_response(value: str | None) -> Path | None:
+    if not value:
+        return None
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        candidate = BASE_DIR.parent / candidate
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError:
+        return None
+
+    allowed_roots = [
+        BASE_DIR.parent.resolve(),
+        get_camera_upload_dir().resolve(),
+        (BASE_DIR / "static" / "results").resolve(),
+    ]
+    if resolved.suffix.lower() not in ALLOWED_IMAGE_SUFFIXES:
+        return None
+    if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+        return None
+    return resolved
 
 
 def camera_upload_filename(original_name: str | None) -> str:
@@ -449,6 +489,86 @@ def create_yolo_record(payload: dict[str, Any]) -> sqlite3.Row:
         return conn.execute("SELECT * FROM detection_records WHERE id = ?", (cursor.lastrowid,)).fetchone()
 
 
+def create_face_record(payload: dict[str, Any]) -> sqlite3.Row:
+    image_path = payload.get("image_path")
+    adapter_result: dict[str, Any] = {}
+
+    if image_path and "matched" not in payload and "granted" not in payload and "result" not in payload:
+        adapter_result = verify_face(str(image_path))
+
+    merged = {**payload, **adapter_result}
+    matched = merged.get("matched")
+    if matched is None:
+        matched = bool(merged.get("granted"))
+    result = merged.get("result") or ("granted" if matched else "denied")
+    user_id = merged.get("user_id")
+    user_name = merged.get("user_name") or merged.get("name")
+
+    with connect_db() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO access_logs
+                (user_id, user_name, result, matched, score, threshold,
+                 min_margin, score_margin, det_score, engine, model_pack,
+                 bbox, landmarks_5, best_match, second_best_identity_match,
+                 top_matches, skipped, image_path, raw_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(user_id) if user_id is not None else None,
+                user_name,
+                result,
+                int(bool(matched)),
+                merged.get("score"),
+                merged.get("threshold"),
+                merged.get("min_margin"),
+                merged.get("score_margin"),
+                merged.get("det_score"),
+                merged.get("engine"),
+                merged.get("model_pack"),
+                json.dumps(merged.get("bbox"), ensure_ascii=False) if merged.get("bbox") is not None else None,
+                json.dumps(merged.get("landmarks_5"), ensure_ascii=False) if merged.get("landmarks_5") is not None else None,
+                json.dumps(merged.get("best_match"), ensure_ascii=False) if merged.get("best_match") is not None else None,
+                json.dumps(merged.get("second_best_identity_match"), ensure_ascii=False)
+                if merged.get("second_best_identity_match") is not None
+                else None,
+                json.dumps(merged.get("top_matches"), ensure_ascii=False) if merged.get("top_matches") is not None else None,
+                json.dumps(merged.get("skipped"), ensure_ascii=False) if merged.get("skipped") is not None else None,
+                image_path,
+                json.dumps(merged, ensure_ascii=False),
+                utc_now(),
+            ),
+        )
+        conn.commit()
+        return conn.execute("SELECT * FROM access_logs WHERE id = ?", (cursor.lastrowid,)).fetchone()
+
+
+def sync_lock_state_from_face(face_record: sqlite3.Row | None) -> sqlite3.Row | None:
+    if face_record is None:
+        return None
+
+    lock_open = int(bool(face_record["matched"]))
+    with connect_db() as conn:
+        conn.execute(
+            """
+            UPDATE device_states
+            SET lock_open = ?, hardware_online = 1, updated_at = ?
+            WHERE id = 1
+            """,
+            (lock_open, utc_now()),
+        )
+        conn.commit()
+        return conn.execute("SELECT * FROM device_states WHERE id = 1").fetchone()
+
+
+def camera_face_verify_enabled(payload: dict[str, Any]) -> bool:
+    raw_value = payload.get("face_verify")
+    if raw_value is None:
+        raw_value = os.environ.get("CAMERA_UPLOAD_FACE_VERIFY", "1")
+    parsed = parse_bool(raw_value)
+    return parsed != 0
+
+
 def make_identity(value: str) -> str:
     identity = re.sub(r"[^0-9A-Za-z_\-]+", "_", value.strip()).strip("_").lower()
     return identity or "user"
@@ -515,11 +635,15 @@ def create_app() -> Flask:
     init_db()
 
     @app.get("/")
+    def dashboard():
+        return render_template("dashboard.html")
+
+    @app.get("/api")
     def index():
         return jsonify(
             {
                 "service": "smart-home-backend",
-                "branch": "test",
+                "branch": os.environ.get("APP_BRANCH", "feature/web-gui"),
                 "hardware_profile": "/api/hardware/profile",
                 "status": "/api/status",
                 "health": "/api/health",
@@ -527,12 +651,21 @@ def create_app() -> Flask:
                 "edge_heartbeats": "/api/edge/heartbeats",
                 "camera_upload": "/api/camera/upload",
                 "yolo_detect": "/api/yolo/detect",
+                "face_latest": "/api/face/latest",
+                "face_verify": "/api/face/verify",
             }
         )
 
     @app.get("/api/health")
     def health():
         return jsonify({"ok": True, "time": utc_now(), "database": str(get_db_path())})
+
+    @app.get("/api/files/image")
+    def image_file():
+        image_path = resolve_image_path_for_response(request.args.get("path"))
+        if image_path is None:
+            return jsonify({"ok": False, "error": "image not found"}), 404
+        return send_file(image_path)
 
     @app.get("/api/hardware/profile")
     def hardware_profile():
@@ -557,6 +690,7 @@ def create_app() -> Flask:
         window_open = parse_bool(payload.get("window_open"))
         fan_on = parse_bool(payload.get("fan_on"))
         lock_open = parse_bool(payload.get("lock_open"))
+        camera_online = parse_bool(payload.get("camera_online"))
 
         with connect_db() as conn:
             current = conn.execute("SELECT * FROM device_states WHERE id = 1").fetchone()
@@ -568,13 +702,16 @@ def create_app() -> Flask:
                 "light_level": light_level if light_level is not None else current_dict.get("light_level", 0),
                 "fan_on": fan_on if fan_on is not None else int(bool(current_dict.get("fan_on"))),
                 "lock_open": lock_open if lock_open is not None else int(bool(current_dict.get("lock_open"))),
+                "camera_online": camera_online
+                if camera_online is not None
+                else int(bool(current_dict.get("camera_online"))),
             }
 
             conn.execute(
                 """
                 UPDATE device_states
                 SET temperature = ?, door_open = ?, window_open = ?, light_level = ?,
-                    fan_on = ?, lock_open = ?, hardware_online = 1, updated_at = ?
+                    fan_on = ?, lock_open = ?, camera_online = ?, hardware_online = 1, updated_at = ?
                 WHERE id = 1
                 """,
                 (
@@ -584,6 +721,7 @@ def create_app() -> Flask:
                     next_values["light_level"],
                     next_values["fan_on"],
                     next_values["lock_open"],
+                    next_values["camera_online"],
                     now,
                 ),
             )
@@ -601,7 +739,7 @@ def create_app() -> Flask:
                     next_values["light_level"],
                     next_values["fan_on"],
                     next_values["lock_open"],
-                    payload.get("source", "orange_pi_aipro_20t"),
+                    payload.get("source", "orange_pi_aipro"),
                     json.dumps(payload, ensure_ascii=False),
                     now,
                 ),
@@ -903,7 +1041,27 @@ def create_app() -> Flask:
             row = create_yolo_record(payload)
         except Exception as exc:
             return jsonify({"ok": False, "image_path": image_path, "error": str(exc)}), 500
-        return jsonify({"ok": True, "image_path": image_path, "yolo_record": row_to_dict(row)})
+
+        face_row = None
+        face_error = None
+        lock_status = None
+        if image_path and camera_face_verify_enabled(upload_payload):
+            try:
+                face_row = create_face_record({**payload, "trigger": "camera_upload"})
+                lock_status = sync_lock_state_from_face(face_row)
+            except Exception as exc:
+                face_error = str(exc)
+
+        return jsonify(
+            {
+                "ok": True,
+                "image_path": image_path,
+                "yolo_record": row_to_dict(row),
+                "face_record": row_to_dict(face_row),
+                "face_error": face_error,
+                "status": row_to_dict(lock_status),
+            }
+        )
 
     @app.post("/api/yolo/detect")
     def yolo_detect():
@@ -1050,59 +1208,17 @@ def create_app() -> Flask:
     @app.post("/api/face/verify")
     def face_access():
         payload = request.get_json(silent=True) or {}
-        image_path = payload.get("image_path")
-        adapter_result: dict[str, Any] = {}
+        try:
+            row = create_face_record(payload)
+            status_row = sync_lock_state_from_face(row)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 500
+        return jsonify({"ok": True, "record": row_to_dict(row), "status": row_to_dict(status_row)})
 
-        if image_path and "matched" not in payload and "granted" not in payload and "result" not in payload:
-            try:
-                adapter_result = verify_face(str(image_path))
-            except Exception as exc:
-                return jsonify({"ok": False, "error": str(exc)}), 500
-
-        merged = {**payload, **adapter_result}
-        matched = merged.get("matched")
-        if matched is None:
-            matched = bool(merged.get("granted"))
-        result = merged.get("result") or ("granted" if matched else "denied")
-        user_id = merged.get("user_id")
-        user_name = merged.get("user_name") or merged.get("name")
+    @app.get("/api/face/latest")
+    def face_latest():
         with connect_db() as conn:
-            cursor = conn.execute(
-                """
-                INSERT INTO access_logs
-                    (user_id, user_name, result, matched, score, threshold,
-                     min_margin, score_margin, det_score, engine, model_pack,
-                     bbox, landmarks_5, best_match, second_best_identity_match,
-                     top_matches, skipped, image_path, raw_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    str(user_id) if user_id is not None else None,
-                    user_name,
-                    result,
-                    int(bool(matched)),
-                    merged.get("score"),
-                    merged.get("threshold"),
-                    merged.get("min_margin"),
-                    merged.get("score_margin"),
-                    merged.get("det_score"),
-                    merged.get("engine"),
-                    merged.get("model_pack"),
-                    json.dumps(merged.get("bbox"), ensure_ascii=False) if merged.get("bbox") is not None else None,
-                    json.dumps(merged.get("landmarks_5"), ensure_ascii=False) if merged.get("landmarks_5") is not None else None,
-                    json.dumps(merged.get("best_match"), ensure_ascii=False) if merged.get("best_match") is not None else None,
-                    json.dumps(merged.get("second_best_identity_match"), ensure_ascii=False)
-                    if merged.get("second_best_identity_match") is not None
-                    else None,
-                    json.dumps(merged.get("top_matches"), ensure_ascii=False) if merged.get("top_matches") is not None else None,
-                    json.dumps(merged.get("skipped"), ensure_ascii=False) if merged.get("skipped") is not None else None,
-                    image_path,
-                    json.dumps(merged, ensure_ascii=False),
-                    utc_now(),
-                ),
-            )
-            conn.commit()
-            row = conn.execute("SELECT * FROM access_logs WHERE id = ?", (cursor.lastrowid,)).fetchone()
+            row = conn.execute("SELECT * FROM access_logs ORDER BY id DESC LIMIT 1").fetchone()
         return jsonify({"ok": True, "record": row_to_dict(row)})
 
     @app.get("/api/face/history")

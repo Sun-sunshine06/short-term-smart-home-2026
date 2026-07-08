@@ -53,6 +53,27 @@ def _try_training_face_service(image_path: str, threshold: float, min_margin: fl
             model_pack=model_pack,
             det_size=det_size,
         )
+    except ValueError as exc:
+        return {
+            "matched": False,
+            "user_id": None,
+            "name": None,
+            "score": None,
+            "threshold": threshold,
+            "min_margin": min_margin,
+            "score_margin": None,
+            "bbox": None,
+            "landmarks_5": None,
+            "det_score": None,
+            "engine": "insightface",
+            "model_pack": model_pack,
+            "metric": "cosine_similarity",
+            "best_match": None,
+            "second_best_identity_match": None,
+            "top_matches": [],
+            "skipped": [{"image": image_path, "reason": str(exc)}],
+            "mode": "no-face",
+        }
     except Exception:
         return None
 
@@ -73,7 +94,7 @@ def verify_face(image_path: str) -> dict[str, Any]:
     if training_result is not None:
         return training_result
 
-    score = float(os.environ.get("FACE_MOCK_SCORE", "0.82"))
+    score = float(os.environ.get("FACE_MOCK_SCORE", "0.0"))
     matched = score >= threshold
 
     return {

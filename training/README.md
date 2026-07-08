@@ -10,6 +10,7 @@
 当前状态：
 
 - 已训练好的 YOLO 模型：`models/object_fire400_drone2800_yolo26s_v1_best.pt`
+- InsightFace `buffalo_l` 模型包已上传到 GitHub Release：`vision-models-v1`。
 - YOLO 只负责物体检测，不做人脸检测或人脸识别。
 - 人脸识别和门禁判断使用 InsightFace。
 - 后端、数据库、硬件拍照和设备控制不在本目录实现范围内，本目录只提供视觉接口和测试样例。
@@ -24,36 +25,35 @@
 ## 1. 文件说明
 
 - `models/object_fire400_drone2800_yolo26s_v1_best.pt`：当前交付的 YOLO 权重。
-- `data/object_fire400_drone2800/data.yaml`：当前物体检测数据集配置。
+- `data/object_fire400_drone2800/data.yaml`：当前物体检测数据集配置；数据集未提交到仓库，复训时需要自行放回。
 - `train_joint.py`：后续需要复训时使用的 YOLO 训练脚本。
 - `val_joint.py`：验证当前或后续训练权重的脚本。
 - `face_compare.py`：InsightFace 人脸比对基础逻辑。
 - `face_service.py`：后端可直接调用的人脸门禁适配层。
+- `object_service.py`：后端可直接调用的 YOLO 物体检测适配层。
 - `face_access_demo.py`：“2 真 1 假”门禁演示脚本。
 - `requirements.txt`：Python 依赖。
-- `.gitignore`：忽略数据集、运行输出和模型权重，避免误提交大文件。
+- `.gitignore`：忽略本地数据集、临时上传目录、虚拟环境和缓存文件。
 
 ## 2. Git 提交说明
 
-本目录上传到 GitHub 时只提交代码、说明文档和小样例图片。下面内容不会提交：
+本目录上传到 GitHub 时保留代码、说明文档、YOLO 推理权重和已生成的验收样例结果。下面内容不会提交：
 
 ```text
 data/
-runs/
-models/*.pt
-models/*.onnx
 ```
 
 原因：
 
 - `data/` 是训练数据集，体积较大。
-- `runs/` 是本地运行输出，可以重新生成。
-- `.pt/.onnx` 模型权重体积较大，建议通过共享盘、Release 或 Git LFS 单独分发。
+- YOLO 推理权重已随仓库提交：`models/object_fire400_drone2800_yolo26s_v1_best.pt`。
+- InsightFace `buffalo_l` 包含超过 100MB 的 ONNX 文件，不适合普通 Git 提交，已通过 GitHub Release 分发。
 
-后端或演示运行前，需要把当前 YOLO 权重放回：
+权重位置：
 
 ```text
-training/models/object_fire400_drone2800_yolo26s_v1_best.pt
+YOLO:        training/models/object_fire400_drone2800_yolo26s_v1_best.pt
+InsightFace: https://github.com/Sun-sunshine06/short-term-smart-home-2026/releases/download/vision-models-v1/buffalo_l.zip
 ```
 
 ## 3. 环境安装
@@ -67,6 +67,35 @@ python -m venv .venv
 python -m pip install -U pip
 python -m pip install -r requirements.txt
 ```
+
+### 3.1 InsightFace `buffalo_l` 权重
+
+有网络时，InsightFace 通常会自动下载 `buffalo_l`。如果需要离线或固定版本运行，请手动下载 Release 资产：
+
+```text
+https://github.com/Sun-sunshine06/short-term-smart-home-2026/releases/download/vision-models-v1/buffalo_l.zip
+```
+
+解压后目录应为：
+
+```text
+<USER_HOME>/.insightface/models/buffalo_l/
+  1k3d68.onnx
+  2d106det.onnx
+  det_10g.onnx
+  genderage.onnx
+  w600k_r50.onnx
+```
+
+Windows 示例：
+
+```powershell
+$dst = "$env:USERPROFILE\.insightface\models"
+New-Item -ItemType Directory -Force $dst | Out-Null
+Expand-Archive .\buffalo_l.zip -DestinationPath $dst -Force
+```
+
+如果解压后变成 `$dst\buffalo_l\...onnx`，则无需额外移动文件。
 
 ## 4. 复训说明
 
@@ -121,41 +150,15 @@ image_path: str
 
 即后端或硬件侧保存下来的一张图片路径。
 
-建议后端封装函数：
+后端可直接调用：
 
 ```python
-from pathlib import Path
-from ultralytics import YOLO
+from object_service import detect_image
 
-_model = YOLO("models/object_fire400_drone2800_yolo26s_v1_best.pt")
-
-
-def detect_image(image_path: str, out_dir: str = "runs/inference/backend") -> dict:
-    results = _model.predict(
-        source=image_path,
-        imgsz=640,
-        conf=0.25,
-        save=True,
-        project=out_dir,
-        name="result",
-        exist_ok=True,
-    )
-    result = results[0]
-    detections = []
-    for box in result.boxes:
-        class_id = int(box.cls[0])
-        detections.append(
-            {
-                "class_id": class_id,
-                "label": _model.names[class_id],
-                "confidence": float(box.conf[0]),
-                "bbox": [float(x) for x in box.xyxy[0].tolist()],
-            }
-        )
-    return {
-        "result_image_path": str(Path(result.save_dir) / Path(result.path).name),
-        "detections": detections,
-    }
+result = detect_image(
+    image_path="uploads/camera_001.jpg",
+    conf=0.60,
+)
 ```
 
 输出示例：
@@ -180,6 +183,7 @@ def detect_image(image_path: str, out_dir: str = "runs/inference/backend") -> di
 - `confidence`：置信度。
 - `bbox`：像素坐标 `[x1, y1, x2, y2]`。
 - `result_image_path`：带检测框和类别标签的结果图路径。
+- 当前建议物体检测推理阈值使用 `conf=0.60`，用于减少非目标图片误检。
 
 ### 5.2 人脸门禁接口
 
@@ -343,7 +347,7 @@ runs/face_access_demo_threshold040/face_access_demo_result.json
 已执行：
 
 ```powershell
-python -m py_compile face_compare.py face_service.py face_access_demo.py train_joint.py val_joint.py
+python -m py_compile object_service.py face_compare.py face_service.py face_access_demo.py train_joint.py val_joint.py
 ```
 
 结果：通过。

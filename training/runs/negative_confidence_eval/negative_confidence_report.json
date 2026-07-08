@@ -1,0 +1,348 @@
+{
+  "model": "models/object_fire400_drone2800_yolo26s_v1_best.pt",
+  "model_names": {
+    "0": "fire_extinguisher",
+    "1": "drone"
+  },
+  "negative_image_count": 98,
+  "groups": {
+    "lfw_faces": {
+      "max_conf_stats": {
+        "count": 80,
+        "mean": 0.2144,
+        "median": 0.1388,
+        "p90": 0.5303,
+        "p95": 0.654,
+        "max": 0.8574
+      },
+      "threshold_false_image_count": {
+        "0.2": 30,
+        "0.25": 26,
+        "0.3": 19,
+        "0.35": 17,
+        "0.4": 16,
+        "0.45": 13,
+        "0.5": 11,
+        "0.6": 6
+      },
+      "top10_by_conf": [
+        {
+          "image": "lfw_020_Elisabeth_Welch_0001.jpg",
+          "max_label": "drone",
+          "max_conf": 0.8574
+        },
+        {
+          "image": "lfw_045_Kim_Clijsters_0009.jpg",
+          "max_label": "drone",
+          "max_conf": 0.7906
+        },
+        {
+          "image": "lfw_051_Mark_Hanson_0001.jpg",
+          "max_label": "drone",
+          "max_conf": 0.7706
+        },
+        {
+          "image": "lfw_004_Angelina_Jolie_0013.jpg",
+          "max_label": "drone",
+          "max_conf": 0.7548
+        },
+        {
+          "image": "lfw_078_Woody_Allen_0004.jpg",
+          "max_label": "drone",
+          "max_conf": 0.6487
+        },
+        {
+          "image": "lfw_037_Jennifer_Lopez_0011.jpg",
+          "max_label": "drone",
+          "max_conf": 0.6172
+        },
+        {
+          "image": "lfw_029_Guido_Westerwelle_0001.jpg",
+          "max_label": "drone",
+          "max_conf": 0.5682
+        },
+        {
+          "image": "lfw_039_John_Abizaid_0003.jpg",
+          "max_label": "drone",
+          "max_conf": 0.5474
+        },
+        {
+          "image": "lfw_033_Ivan_Stambolic_0001.jpg",
+          "max_label": "drone",
+          "max_conf": 0.5284
+        },
+        {
+          "image": "lfw_022_Francisco_Urenda_0001.jpg",
+          "max_label": "drone",
+          "max_conf": 0.5276
+        }
+      ]
+    },
+    "skimage_misc": {
+      "max_conf_stats": {
+        "count": 12,
+        "mean": 0.2175,
+        "median": 0.2082,
+        "p90": 0.4733,
+        "p95": 0.4943,
+        "max": 0.5115
+      },
+      "threshold_false_image_count": {
+        "0.2": 6,
+        "0.25": 3,
+        "0.3": 3,
+        "0.35": 3,
+        "0.4": 3,
+        "0.45": 2,
+        "0.5": 1,
+        "0.6": 0
+      },
+      "top10_by_conf": [
+        {
+          "image": "immunohistochemistry.jpg",
+          "max_label": "drone",
+          "max_conf": 0.5115
+        },
+        {
+          "image": "camera.jpg",
+          "max_label": "drone",
+          "max_conf": 0.4803
+        },
+        {
+          "image": "rocket.jpg",
+          "max_label": "drone",
+          "max_conf": 0.4098
+        },
+        {
+          "image": "cat.jpg",
+          "max_label": "drone",
+          "max_conf": 0.2499
+        },
+        {
+          "image": "chelsea.jpg",
+          "max_label": "drone",
+          "max_conf": 0.2499
+        },
+        {
+          "image": "moon.jpg",
+          "max_label": "drone",
+          "max_conf": 0.2195
+        },
+        {
+          "image": "coffee.jpg",
+          "max_label": "drone",
+          "max_conf": 0.1968
+        },
+        {
+          "image": "hubble_deep_field.jpg",
+          "max_label": "drone",
+          "max_conf": 0.1753
+        },
+        {
+          "image": "coins.jpg",
+          "max_label": "drone",
+          "max_conf": 0.1018
+        },
+        {
+          "image": "astronaut.jpg",
+          "max_label": "drone",
+          "max_conf": 0.0146
+        }
+      ]
+    },
+    "wikimedia_fire_hydrants": {
+      "max_conf_stats": {
+        "count": 6,
+        "mean": 0.3503,
+        "median": 0.3032,
+        "p90": 0.7028,
+        "p95": 0.7176,
+        "max": 0.7323
+      },
+      "threshold_false_image_count": {
+        "0.2": 3,
+        "0.25": 3,
+        "0.3": 3,
+        "0.35": 3,
+        "0.4": 3,
+        "0.45": 3,
+        "0.5": 3,
+        "0.6": 2
+      },
+      "top10_by_conf": [
+        {
+          "image": "Gfp-fire-hydrant.jpg",
+          "max_label": "fire_extinguisher",
+          "max_conf": 0.7323
+        },
+        {
+          "image": "Fire_Hydrant.JPG",
+          "max_label": "drone",
+          "max_conf": 0.6733
+        },
+        {
+          "image": "Yellow_and_Blue_Fire_Hydrant.jpg",
+          "max_label": "fire_extinguisher",
+          "max_conf": 0.5004
+        },
+        {
+          "image": "The_Hill_Fire_Hydrant.jpg",
+          "max_label": "fire_extinguisher",
+          "max_conf": 0.1059
+        },
+        {
+          "image": "Fire_hydrant_UK.jpg",
+          "max_label": "drone",
+          "max_conf": 0.0822
+        },
+        {
+          "image": "Fire_hydrant_4.jpg",
+          "max_label": "drone",
+          "max_conf": 0.0078
+        }
+      ]
+    }
+  },
+  "overall": {
+    "max_conf_stats": {
+      "count": 98,
+      "mean": 0.2231,
+      "median": 0.15,
+      "p90": 0.5341,
+      "p95": 0.6821,
+      "max": 0.8574
+    },
+    "threshold_false_image_count": {
+      "0.2": 39,
+      "0.25": 32,
+      "0.3": 25,
+      "0.35": 23,
+      "0.4": 22,
+      "0.45": 18,
+      "0.5": 15,
+      "0.6": 8
+    },
+    "top20_by_conf": [
+      {
+        "group": "lfw_faces",
+        "image": "lfw_020_Elisabeth_Welch_0001.jpg",
+        "max_label": "drone",
+        "max_conf": 0.8574
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_045_Kim_Clijsters_0009.jpg",
+        "max_label": "drone",
+        "max_conf": 0.7906
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_051_Mark_Hanson_0001.jpg",
+        "max_label": "drone",
+        "max_conf": 0.7706
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_004_Angelina_Jolie_0013.jpg",
+        "max_label": "drone",
+        "max_conf": 0.7548
+      },
+      {
+        "group": "wikimedia_fire_hydrants",
+        "image": "Gfp-fire-hydrant.jpg",
+        "max_label": "fire_extinguisher",
+        "max_conf": 0.7323
+      },
+      {
+        "group": "wikimedia_fire_hydrants",
+        "image": "Fire_Hydrant.JPG",
+        "max_label": "drone",
+        "max_conf": 0.6733
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_078_Woody_Allen_0004.jpg",
+        "max_label": "drone",
+        "max_conf": 0.6487
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_037_Jennifer_Lopez_0011.jpg",
+        "max_label": "drone",
+        "max_conf": 0.6172
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_029_Guido_Westerwelle_0001.jpg",
+        "max_label": "drone",
+        "max_conf": 0.5682
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_039_John_Abizaid_0003.jpg",
+        "max_label": "drone",
+        "max_conf": 0.5474
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_033_Ivan_Stambolic_0001.jpg",
+        "max_label": "drone",
+        "max_conf": 0.5284
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_022_Francisco_Urenda_0001.jpg",
+        "max_label": "drone",
+        "max_conf": 0.5276
+      },
+      {
+        "group": "skimage_misc",
+        "image": "immunohistochemistry.jpg",
+        "max_label": "drone",
+        "max_conf": 0.5115
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_056_Nabil_Shaath_0002.jpg",
+        "max_label": "drone",
+        "max_conf": 0.5045
+      },
+      {
+        "group": "wikimedia_fire_hydrants",
+        "image": "Yellow_and_Blue_Fire_Hydrant.jpg",
+        "max_label": "fire_extinguisher",
+        "max_conf": 0.5004
+      },
+      {
+        "group": "skimage_misc",
+        "image": "camera.jpg",
+        "max_label": "drone",
+        "max_conf": 0.4803
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_073_Tom_Craddick_0002.jpg",
+        "max_label": "drone",
+        "max_conf": 0.4775
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_054_Michel_Minard_0001.jpg",
+        "max_label": "drone",
+        "max_conf": 0.4739
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_068_Sebastien_Grosjean_0004.jpg",
+        "max_label": "drone",
+        "max_conf": 0.4475
+      },
+      {
+        "group": "lfw_faces",
+        "image": "lfw_028_Gloria_Macapagal_Arroyo_0009.jpg",
+        "max_label": "drone",
+        "max_conf": 0.4247
+      }
+    ]
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "dataset": "C:\\Users\\23378\\scikit_learn_data\\lfw_home\\lfw_funneled",
+  "purpose": "2 true authorized probes + 1 fake unknown probe face access demo",
+  "threshold": 0.4,
+  "min_margin": 0.05,
+  "gallery_count_per_user": 5,
+  "layout": {
+    "gallery_dir": "runs\\face_access_demo_threshold040\\gallery",
+    "probes_dir": "runs\\face_access_demo_threshold040\\probes",
+    "authorized_users": [
+      {
+        "user_id": "George_W_Bush",
+        "gallery_images": [
+          "runs\\face_access_demo_threshold040\\gallery\\George_W_Bush\\001.jpg",
+          "runs\\face_access_demo_threshold040\\gallery\\George_W_Bush\\002.jpg",
+          "runs\\face_access_demo_threshold040\\gallery\\George_W_Bush\\003.jpg",
+          "runs\\face_access_demo_threshold040\\gallery\\George_W_Bush\\004.jpg",
+          "runs\\face_access_demo_threshold040\\gallery\\George_W_Bush\\005.jpg"
+        ]
+      },
+      {
+        "user_id": "Colin_Powell",
+        "gallery_images": [
+          "runs\\face_access_demo_threshold040\\gallery\\Colin_Powell\\001.jpg",
+          "runs\\face_access_demo_threshold040\\gallery\\Colin_Powell\\002.jpg",
+          "runs\\face_access_demo_threshold040\\gallery\\Colin_Powell\\003.jpg",
+          "runs\\face_access_demo_threshold040\\gallery\\Colin_Powell\\004.jpg",
+          "runs\\face_access_demo_threshold040\\gallery\\Colin_Powell\\005.jpg"
+        ]
+      }
+    ],
+    "true_probes": [
+      {
+        "expected": "George_W_Bush",
+        "path": "runs\\face_access_demo_threshold040\\probes\\true_George_W_Bush.jpg",
+        "source": "C:\\Users\\23378\\scikit_learn_data\\lfw_home\\lfw_funneled\\George_W_Bush\\George_W_Bush_0006.jpg"
+      },
+      {
+        "expected": "Colin_Powell",
+        "path": "runs\\face_access_demo_threshold040\\probes\\true_Colin_Powell.jpg",
+        "source": "C:\\Users\\23378\\scikit_learn_data\\lfw_home\\lfw_funneled\\Colin_Powell\\Colin_Powell_0006.jpg"
+      }
+    ],
+    "fake_probe": {
+      "expected": null,
+      "source_identity": "Tony_Blair",
+      "path": "runs\\face_access_demo_threshold040\\probes\\fake_unknown_Tony_Blair.jpg",
+      "source": "C:\\Users\\23378\\scikit_learn_data\\lfw_home\\lfw_funneled\\Tony_Blair\\Tony_Blair_0001.jpg"
+    }
+  },
+  "results": [
+    {
+      "case": "true_George_W_Bush",
+      "expected_user_id": "George_W_Bush",
+      "expected_action": "unlock",
+      "image_path": "runs\\face_access_demo_threshold040\\probes\\true_George_W_Bush.jpg",
+      "action": "unlock",
+      "passed": true,
+      "matched": true,
+      "user_id": "George_W_Bush",
+      "score": 0.7871103286743164,
+      "threshold": 0.4,
+      "score_margin": 0.8241792842745781,
+      "min_margin": 0.05,
+      "best_match": {
+        "user_id": "George_W_Bush",
+        "name": "George_W_Bush",
+        "reference_image": "runs\\face_access_demo_threshold040\\gallery\\George_W_Bush\\005.jpg",
+        "score": 0.7871103286743164,
+        "cosine_distance": 0.2128896713256836
+      },
+      "second_best_identity_match": {
+        "user_id": "Colin_Powell",
+        "name": "Colin_Powell",
+        "reference_image": "runs\\face_access_demo_threshold040\\gallery\\Colin_Powell\\001.jpg",
+        "score": -0.03706895560026169,
+        "cosine_distance": 1.0370689556002617
+      }
+    },
+    {
+      "case": "true_Colin_Powell",
+      "expected_user_id": "Colin_Powell",
+      "expected_action": "unlock",
+      "image_path": "runs\\face_access_demo_threshold040\\probes\\true_Colin_Powell.jpg",
+      "action": "unlock",
+      "passed": true,
+      "matched": true,
+      "user_id": "Colin_Powell",
+      "score": 0.7604125738143921,
+      "threshold": 0.4,
+      "score_margin": 0.689030796289444,
+      "min_margin": 0.05,
+      "best_match": {
+        "user_id": "Colin_Powell",
+        "name": "Colin_Powell",
+        "reference_image": "runs\\face_access_demo_threshold040\\gallery\\Colin_Powell\\004.jpg",
+        "score": 0.7604125738143921,
+        "cosine_distance": 0.2395874261856079
+      },
+      "second_best_identity_match": {
+        "user_id": "George_W_Bush",
+        "name": "George_W_Bush",
+        "reference_image": "runs\\face_access_demo_threshold040\\gallery\\George_W_Bush\\003.jpg",
+        "score": 0.07138177752494812,
+        "cosine_distance": 0.9286182224750519
+      }
+    },
+    {
+      "case": "fake_unknown",
+      "expected_user_id": null,
+      "expected_action": "deny",
+      "image_path": "runs\\face_access_demo_threshold040\\probes\\fake_unknown_Tony_Blair.jpg",
+      "action": "deny",
+      "passed": true,
+      "matched": false,
+      "user_id": null,
+      "score": 0.08386287093162537,
+      "threshold": 0.4,
+      "score_margin": 0.05956744961440563,
+      "min_margin": 0.05,
+      "best_match": {
+        "user_id": "George_W_Bush",
+        "name": "George_W_Bush",
+        "reference_image": "runs\\face_access_demo_threshold040\\gallery\\George_W_Bush\\004.jpg",
+        "score": 0.08386287093162537,
+        "cosine_distance": 0.9161371290683746
+      },
+      "second_best_identity_match": {
+        "user_id": "Colin_Powell",
+        "name": "Colin_Powell",
+        "reference_image": "runs\\face_access_demo_threshold040\\gallery\\Colin_Powell\\004.jpg",
+        "score": 0.024295421317219734,
+        "cosine_distance": 0.9757045786827803
+      }
+    }
+  ],
+  "passed": true
+}

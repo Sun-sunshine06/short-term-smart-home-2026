@@ -2,7 +2,7 @@
 
 Flask + SQLite backend for the first smart-home integration test branch.
 
-This version does not require real hardware. It seeds an Orange Pi AIpro 20T hardware profile from official public specifications and provides mock-friendly APIs for frontend, hardware, YOLO, and face-recognition integration.
+This version does not require real hardware. It seeds a generic Ascend-based Orange Pi AIpro hardware profile and provides mock-friendly APIs for frontend, hardware, YOLO, and face-recognition integration.
 
 ## Run
 
@@ -24,6 +24,12 @@ Default server:
 http://127.0.0.1:5000
 ```
 
+Open the dashboard:
+
+```text
+http://127.0.0.1:5000/
+```
+
 ## Simulate Orange Pi Uploads
 
 Open another terminal:
@@ -35,7 +41,21 @@ python scripts\simulate_orange_pi.py
 
 ## Vision Models
 
-Model weights are not committed to Git. Put local weights under `../training/models/` or set explicit environment variables:
+YOLO inference weights are committed under `../training/models/`. InsightFace `buffalo_l` weights are distributed as a GitHub Release asset because several ONNX files are larger than GitHub's normal Git file limit.
+
+Release asset:
+
+```text
+https://github.com/Sun-sunshine06/short-term-smart-home-2026/releases/download/vision-models-v1/buffalo_l.zip
+```
+
+For offline InsightFace runs, unzip `buffalo_l.zip` to:
+
+```text
+<USER_HOME>/.insightface/models/buffalo_l/
+```
+
+Then set explicit environment variables if needed:
 
 ```powershell
 $env:MODEL_PATH="<PROJECT_ROOT>\training\models\object_fire400_drone2800_yolo26s_v1_best.pt"
@@ -43,9 +63,11 @@ $env:FACE_MODEL_PACK="buffalo_l"
 $env:FACE_GALLERY_DIR="<PROJECT_ROOT>\training\face_gallery"
 $env:FACE_SIMILARITY_THRESHOLD="0.40"
 $env:FACE_MIN_MARGIN="0.05"
+$env:CAMERA_UPLOAD_FACE_VERIFY="1"
 ```
 
 If the model files or optional vision dependencies are missing, the backend returns mock results so API/frontend integration can continue.
+For safety, the face fallback now denies by default unless `FACE_MOCK_SCORE` is explicitly raised for a mock-only demo.
 
 ## Main APIs
 
@@ -64,6 +86,7 @@ GET  /api/yolo/latest
 GET  /api/yolo/history
 POST /api/face/access
 POST /api/face/verify
+GET  /api/face/latest
 GET  /api/face/history
 GET  /api/face/users
 POST /api/face/users
@@ -116,7 +139,7 @@ Multipart example:
 curl -X POST http://<BACKEND_IP>:5000/api/camera/upload \
   -F "image=@/tmp/smart_home_snapshot.jpg" \
   -F "source=orange_pi_camera" \
-  -F "node_id=orange-pi-aipro-20t"
+  -F "node_id=orange-pi-aipro"
 ```
 
 JSON/base64 example:
@@ -125,12 +148,18 @@ JSON/base64 example:
 {
   "filename": "smart_home_snapshot.jpg",
   "source": "orange_pi_camera",
-  "node_id": "orange-pi-aipro-20t",
+  "node_id": "orange-pi-aipro",
   "image_base64": "<base64 encoded image>"
 }
 ```
 
-The upload endpoint saves the image and immediately passes the saved `image_path` to the YOLO adapter. The response includes both `image_path` and `yolo_record`.
+The upload endpoint saves the image and immediately passes the saved `image_path` to the YOLO adapter. By default it also runs face verification against `FACE_GALLERY_DIR`, writes an access log, and updates `lock_open` according to the face result. The response includes `image_path`, `yolo_record`, `face_record`, optional `face_error`, and the updated `status`.
+
+Disable automatic face verification for camera uploads only when needed:
+
+```powershell
+$env:CAMERA_UPLOAD_FACE_VERIFY="0"
+```
 
 If the image already exists on the backend computer, call YOLO directly:
 
@@ -156,10 +185,13 @@ def detect_image(image_path: str) -> dict:
         ],
         "model": {
             "name": "YOLO26s",
-            "weights": "training/models/object_fire400_drone2800_yolo26s_v1_best.pt"
+            "weights": "training/models/object_fire400_drone2800_yolo26s_v1_best.pt",
+            "conf": 0.60
         }
     }
 ```
+
+The default backend confidence threshold follows the vision module recommendation: `0.60`. Override it with `YOLO_CONFIDENCE` only if the YOLO team asks for a different value.
 
 ## Example Face Verification Request
 

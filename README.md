@@ -6,9 +6,9 @@
 
 本仓库用于小组协作，保存项目题目、课件、研发文档、后端/前端/算法代码和可共享资料。
 
-当前分支：`test`
+当前分支：`feature/web-gui`
 
-`test` 分支用于在真实硬件完全到位前，先开发和联调第一版数据库后端。当前后端使用 Flask + SQLite，并用 Orange Pi AIpro 20T 官方规格和模拟信号作为测试数据来源。
+`feature/web-gui` 分支基于 `test` 分支，专门用于开发第一版 Web GUI。当前后端使用 Flask + SQLite，并用 Orange Pi AIpro 昇腾开发板通用规格和模拟信号作为测试数据来源。
 
 ## 仓库结构
 
@@ -18,9 +18,10 @@ backend/
   requirements.txt        后端 Python 依赖
   data/                   本地 SQLite 数据库目录，.db 文件不提交
   scripts/
-    simulate_orange_pi.py Orange Pi AIpro 20T 模拟上报脚本
+    simulate_orange_pi.py Orange Pi AIpro 模拟上报脚本
 edge/
   orange_pi_client.py     香橙派端 HTTP 上报与命令轮询脚本
+training/                 YOLO 物体检测与 InsightFace 人脸门禁代码、权重和验收样例
 docs/
   official/              可共享的官方题目文档
   courseware/
@@ -36,6 +37,7 @@ local/                   本地材料，默认不提交 Git
 
 - `main`：稳定资料和已确认内容。
 - `test`：后端、接口、模拟数据、前端联调等第一版开发内容。
+- `feature/web-gui`：Web GUI 控制台开发分支。
 
 多人协作时，建议先从 `test` 开小分支开发，确认可用后再合并回 `test`；验收前再从 `test` 合并稳定内容到 `main`。
 
@@ -53,6 +55,13 @@ local/                   本地材料，默认不提交 Git
 
 当前技术判断：短期内优先使用本地电脑作为后端和算法运行环境，YOLO 可先用预训练模型完成通用物体识别，数据库优先 SQLite，GUI 优先 Web。
 
+## 视觉模型权重
+
+- YOLO 推理权重已提交到仓库：`training/models/object_fire400_drone2800_yolo26s_v1_best.pt`。
+- InsightFace `buffalo_l` ONNX 权重体积较大，放在 GitHub Release：`vision-models-v1`。
+- 下载地址：`https://github.com/Sun-sunshine06/short-term-smart-home-2026/releases/download/vision-models-v1/buffalo_l.zip`。
+- 离线运行人脸识别时，将 `buffalo_l.zip` 解压到 `<USER_HOME>/.insightface/models/buffalo_l/`。
+
 ## 后端原型
 
 当前 `test` 分支已提供第一版后端原型：
@@ -67,6 +76,12 @@ python app.py
 
 ```text
 http://127.0.0.1:5000
+```
+
+打开根路径即可访问 Web GUI：
+
+```text
+http://127.0.0.1:5000/
 ```
 
 常用接口：
@@ -87,7 +102,7 @@ POST /api/face/users/<id>/images
 GET  /api/face/gallery
 ```
 
-没有真实硬件时，可以用模拟脚本测试 Orange Pi AIpro 20T 数据上报：
+没有真实硬件时，可以用模拟脚本测试 Orange Pi AIpro 数据上报：
 
 ```powershell
 cd <PROJECT_ROOT>\backend

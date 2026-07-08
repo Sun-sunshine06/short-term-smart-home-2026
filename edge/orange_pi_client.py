@@ -16,7 +16,7 @@ import urllib.request
 from typing import Any
 
 
-CLIENT_VERSION = "0.2.0"
+CLIENT_VERSION = "0.3.0"
 
 
 def post_json(base_url: str, path: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -204,6 +204,111 @@ def upload_image(base_url: str, image_path: str, node_id: str, source: str, time
     return response
 
 
+def camera_device_for_opencv(device: str) -> int | str:
+    return int(device) if device.isdigit() else device
+
+
+def camera_device_path(device: str) -> str:
+    if device.startswith("/"):
+        return device
+    if device.isdigit():
+        return f"/dev/video{device}"
+    return device
+
+
+def next_capture_path(capture_dir: str, step: int) -> str:
+    directory = os.path.expanduser(capture_dir)
+    os.makedirs(directory, exist_ok=True)
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    return os.path.join(directory, f"camera_{stamp}_{step + 1:04d}.jpg")
+
+
+def capture_with_opencv(image_path: str, device: str, width: int, height: int) -> None:
+    try:
+        import cv2  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RuntimeError("OpenCV is not installed") from exc
+
+    camera = cv2.VideoCapture(camera_device_for_opencv(device))
+    try:
+        if not camera.isOpened():
+            raise RuntimeError(f"camera cannot be opened: {device}")
+        if width > 0:
+            camera.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        if height > 0:
+            camera.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+        ok = False
+        frame = None
+        for _ in range(3):
+            ok, frame = camera.read()
+            if ok:
+                break
+            time.sleep(0.1)
+        if not ok or frame is None:
+            raise RuntimeError(f"camera frame read failed: {device}")
+
+        encoded_ok, encoded = cv2.imencode(".jpg", frame)
+        if not encoded_ok:
+            raise RuntimeError("camera frame JPEG encoding failed")
+        with open(image_path, "wb") as handle:
+            handle.write(encoded.tobytes())
+    finally:
+        camera.release()
+
+
+def capture_with_command(command_template: str, image_path: str, device: str, width: int, height: int) -> None:
+    command = command_template.format(
+        output=image_path,
+        device=camera_device_path(device),
+        width=width,
+        height=height,
+    )
+    completed = subprocess.run(command, shell=True, check=False, capture_output=True, text=True, timeout=30)
+    detail = completed.stderr.strip() or completed.stdout.strip()
+    if completed.returncode != 0:
+        raise RuntimeError(f"camera command failed: {detail or f'exit code {completed.returncode}'}")
+    if not os.path.exists(image_path) or os.path.getsize(image_path) <= 0:
+        raise RuntimeError(f"camera command did not create image: {image_path}; {detail or 'no command output'}")
+
+
+def auto_camera_command() -> str | None:
+    if shutil.which("libcamera-still"):
+        return 'libcamera-still -n -t 1000 -o "{output}"'
+    if shutil.which("fswebcam"):
+        return 'fswebcam -d "{device}" -r {width}x{height} --no-banner "{output}"'
+    if shutil.which("ffmpeg"):
+        return 'ffmpeg -y -f v4l2 -video_size {width}x{height} -i "{device}" -frames:v 1 "{output}" -loglevel error'
+    return None
+
+
+def capture_camera_frame(
+    capture_dir: str,
+    step: int,
+    device: str,
+    width: int,
+    height: int,
+    command_template: str | None,
+) -> str:
+    image_path = next_capture_path(capture_dir, step)
+    if command_template:
+        capture_with_command(command_template, image_path, device, width, height)
+        return image_path
+
+    try:
+        capture_with_opencv(image_path, device, width, height)
+        return image_path
+    except RuntimeError as opencv_error:
+        fallback = auto_camera_command()
+        if not fallback:
+            raise RuntimeError(
+                f"{opencv_error}; install python3-opencv, fswebcam, libcamera-tools, "
+                "or pass --camera-command"
+            ) from opencv_error
+        capture_with_command(fallback, image_path, device, width, height)
+        return image_path
+
+
 def build_mock_payload(step: int, source: str, node_id: str) -> dict[str, Any]:
     temperature = round(25.0 + random.random() * 6.0, 1)
     return {
@@ -240,8 +345,58 @@ def poll_commands(base_url: str, timeout: float, acknowledge: bool) -> None:
             )
 
 
+def run_camera_loop(base_url: str, node_id: str, args: argparse.Namespace) -> None:
+    step = 0
+    print(
+        "camera mode: "
+        f"device={args.camera_device} "
+        f"size={args.camera_width}x{args.camera_height} "
+        f"interval={args.camera_interval}s"
+    )
+    while args.camera_count <= 0 or step < args.camera_count:
+        camera_online = False
+        try:
+            frame_path = capture_camera_frame(
+                args.camera_dir,
+                step,
+                args.camera_device,
+                args.camera_width,
+                args.camera_height,
+                args.camera_command,
+            )
+            print(f"camera frame #{step + 1}: {frame_path}")
+            upload_image(base_url, frame_path, node_id, args.image_source, args.timeout)
+            camera_online = True
+        except urllib.error.URLError as exc:
+            print(f"camera upload network error: {exc}")
+        except Exception as exc:
+            print(f"camera capture/upload error: {exc}")
+
+        payload = build_mock_payload(step, args.source, node_id)
+        payload["camera_online"] = camera_online
+        try:
+            if args.heartbeat_every > 0 and step % args.heartbeat_every == 0:
+                heartbeat = post_json(
+                    base_url,
+                    "/api/edge/heartbeat",
+                    build_heartbeat_payload(node_id, args.name),
+                    args.timeout,
+                )
+                print(f"heartbeat #{step + 1}: {heartbeat.get('ok')}")
+            response = post_json(base_url, "/api/sensor/update", payload, args.timeout)
+            print(f"sensor #{step + 1}: {payload} -> {response.get('ok')}")
+            poll_commands(base_url, args.timeout, acknowledge=not args.no_ack)
+        except urllib.error.URLError as exc:
+            print(f"network error: {exc}")
+        except Exception as exc:
+            print(f"client error: {exc}")
+
+        step += 1
+        time.sleep(args.camera_interval)
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Orange Pi AIpro 20T edge client.")
+    parser = argparse.ArgumentParser(description="Orange Pi AIpro edge client.")
     parser.add_argument(
         "--base-url",
         default=os.environ.get("SMART_HOME_BACKEND", "http://127.0.0.1:5000"),
@@ -250,14 +405,25 @@ def main() -> None:
     parser.add_argument("--interval", type=float, default=2.0, help="Seconds between sensor updates.")
     parser.add_argument("--count", type=int, default=0, help="Number of loops; 0 means forever.")
     parser.add_argument("--timeout", type=float, default=5.0, help="HTTP timeout seconds.")
-    parser.add_argument("--source", default="orange_pi_aipro_20t", help="Sensor source name.")
+    parser.add_argument("--source", default="orange_pi_aipro", help="Sensor source name.")
     parser.add_argument("--node-id", default=os.environ.get("ORANGE_PI_NODE_ID"), help="Stable edge node id.")
-    parser.add_argument("--name", default="Orange Pi AIpro 20T", help="Human-readable node name.")
+    parser.add_argument("--name", default="Orange Pi AIpro", help="Human-readable node name.")
     parser.add_argument("--role", default="orange_pi_edge", help="Node role stored by the backend.")
     parser.add_argument("--heartbeat-every", type=int, default=1, help="Send heartbeat every N loops; 0 disables it.")
     parser.add_argument("--upload-image", help="Upload one local image from Orange Pi to backend YOLO flow, then exit by default.")
     parser.add_argument("--image-source", default="orange_pi_camera", help="Source name for image upload records.")
     parser.add_argument("--continue-after-upload", action="store_true", help="Continue sensor loop after --upload-image.")
+    parser.add_argument("--camera", action="store_true", help="Capture camera frames and upload them to the backend YOLO flow.")
+    parser.add_argument("--camera-device", default="0", help="Camera index or device path, for example 0 or /dev/video0.")
+    parser.add_argument("--camera-count", type=int, default=0, help="Number of camera frames to upload; 0 means forever.")
+    parser.add_argument("--camera-interval", type=float, default=1.0, help="Seconds between camera frame uploads.")
+    parser.add_argument("--camera-dir", default="~/smart_home_edge/captures", help="Directory for captured camera frames.")
+    parser.add_argument("--camera-width", type=int, default=640, help="Requested camera frame width.")
+    parser.add_argument("--camera-height", type=int, default=480, help="Requested camera frame height.")
+    parser.add_argument(
+        "--camera-command",
+        help='Optional capture command template, for example: fswebcam -d "{device}" -r {width}x{height} --no-banner "{output}"',
+    )
     parser.add_argument("--no-ack", action="store_true", help="Do not acknowledge consumed commands.")
     args = parser.parse_args()
 
@@ -285,8 +451,12 @@ def main() -> None:
             print(f"image upload network error: {exc}")
         except Exception as exc:
             print(f"image upload error: {exc}")
-        if not args.continue_after_upload:
+        if not args.continue_after_upload and not args.camera:
             return
+
+    if args.camera:
+        run_camera_loop(base_url, node_id, args)
+        return
 
     while args.count <= 0 or step < args.count:
         payload = build_mock_payload(step, args.source, node_id)

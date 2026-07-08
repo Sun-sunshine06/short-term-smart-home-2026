@@ -1,4 +1,4 @@
-# Orange Pi AIpro 20T 通用联调与重启手册
+# Orange Pi AIpro 昇腾开发板通用联调与重启手册
 
 > 更新时间：2026-07-07。本文面向任意小组成员，不绑定某一台电脑、某一个 IP 或某一个用户目录。使用前先把占位符替换成自己的实际环境。
 
@@ -12,7 +12,7 @@
 | `<BACKEND_BASE_URL>` | 后端完整地址 | `http://<BACKEND_HOST>:<BACKEND_PORT>` |
 | `<EDGE_HOME>` | Orange Pi 上保存边缘脚本的目录 | `~/smart_home_edge` |
 | `<EDGE_CLIENT>` | Orange Pi 边缘脚本路径 | `<EDGE_HOME>/orange_pi_client.py` |
-| `<NODE_ID>` | Orange Pi 节点 ID | `orange-pi-aipro-20t` |
+| `<NODE_ID>` | Orange Pi 节点 ID | `orange-pi-aipro-ascend` |
 | `<TEST_IMAGE>` | Orange Pi 上待上传的测试图片 | `<EDGE_HOME>/test_images/demo.jpg` |
 
 后续命令默认：
@@ -21,7 +21,7 @@
 <BACKEND_PORT> = 5000
 <EDGE_HOME> = ~/smart_home_edge
 <EDGE_CLIENT> = ~/smart_home_edge/orange_pi_client.py
-<NODE_ID> = orange-pi-aipro-20t
+<NODE_ID> = orange-pi-aipro-ascend
 ```
 
 ## 当前链路目标
@@ -29,7 +29,7 @@
 第一版采用更稳的分工：
 
 ```text
-Orange Pi AIpro 20T
+Orange Pi AIpro 昇腾开发板
 -> 采集模拟信号 / 读取测试图片
 -> HTTP 上传到后端电脑
 -> Flask 后端
@@ -37,7 +37,20 @@ Orange Pi AIpro 20T
 -> Web GUI 展示
 ```
 
-YOLO 和人脸识别先运行在后端电脑上。Orange Pi 负责采集、上传和执行控制命令，不要求第一版在 Orange Pi 上部署 YOLO 模型。
+YOLO 和人脸识别先运行在后端电脑上。Orange Pi 负责采集、上传和执行控制命令，不要求第一版在 Orange Pi 上部署 YOLO 模型。若后续老师要求展示昇腾板端推理，再单独接 CANN/MindSpore/ACLLite 环境。
+
+## 开发板替换影响
+
+如果领取到的不是昇腾版 Orange Pi AIpro，而是混入的鲲鹏开发板，应按老师要求更换为昇腾开发板。更换后对本项目第一版流程的影响如下：
+
+- 不影响：Flask 后端、SQLite 数据库、Web GUI、HTTP 上报、命令轮询、图片上传接口；
+- 不影响：YOLO 第一版仍然先在后端电脑运行，Orange Pi 只负责把本地图片上传给后端；
+- 需要重新确认：开发板系统镜像、默认用户、IP 获取方式、Python 版本、网络连接方式；
+- 需要重新确认：GPIO/PWM/I2C/摄像头接口的实际可用方式；
+- 需要更新显示信息：Web GUI 和硬件 Profile 不应写死 `20T`，应按实际换到的昇腾型号填写；
+- 暂不作为第一版必做：CANN、MindSpore、ACLLite、Jupyter Lab、板端目标检测样例。
+
+老师发的《手把手教你搭建 OrangePi AIpro 开发环境》主要用于昇腾板系统准备和 AI 环境搭建。它说明 AIpro 走昇腾路线，涉及 Ubuntu 镜像烧录、SSH/网线/Wi-Fi 登录、CANN、ACLLite、MindSpore 和 Jupyter Lab 示例。除非验收要求板端 AI 推理，否则这些内容不会改变当前“Orange Pi 上传，后端推理”的软件闭环。
 
 ## 已验证能力
 
@@ -79,24 +92,58 @@ Linux/macOS shell：
 cd <PROJECT_ROOT>
 ```
 
-### 2. 安装依赖
+### 2. 创建项目虚拟环境并安装依赖
 
-首次运行需要：
+推荐把依赖安装到仓库内的 `.venv`，并把 pip 缓存、临时目录和 InsightFace 模型包放到 `local/`，避免占用系统 Python 或 C 盘用户目录。
 
-```bash
-python -m pip install -r backend/requirements.txt
+Windows PowerShell：
+
+```powershell
+New-Item -ItemType Directory -Force -Path .\local\pip-cache, .\local\tmp, .\local\models\insightface | Out-Null
+python -m venv .venv
+$env:PIP_CACHE_DIR = (Resolve-Path .\local\pip-cache).Path
+$env:TMP = (Resolve-Path .\local\tmp).Path
+$env:TEMP = (Resolve-Path .\local\tmp).Path
+$env:INSIGHTFACE_HOME = (Resolve-Path .\local\models\insightface).Path
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r .\backend\requirements.txt
 ```
 
-如果要使用真实 YOLO 或人脸识别依赖，再安装：
+如果要使用真实 YOLO 或人脸识别依赖，再安装视觉依赖：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r .\backend\requirements-vision.txt
+.\.venv\Scripts\python.exe -m pip install scikit-image scikit-learn
+```
+
+Linux/macOS shell：
 
 ```bash
-python -m pip install -r backend/requirements-vision.txt
+mkdir -p local/pip-cache local/tmp local/models/insightface
+python3 -m venv .venv
+export PIP_CACHE_DIR="$(pwd)/local/pip-cache"
+export TMPDIR="$(pwd)/local/tmp"
+export INSIGHTFACE_HOME="$(pwd)/local/models/insightface"
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -r backend/requirements.txt
+.venv/bin/python -m pip install -r backend/requirements-vision.txt
+.venv/bin/python -m pip install scikit-image scikit-learn
 ```
 
 ### 3. 启动后端
 
+Windows PowerShell：
+
+```powershell
+$env:INSIGHTFACE_HOME = (Resolve-Path .\local\models\insightface).Path
+.\.venv\Scripts\python.exe backend\app.py
+```
+
+Linux/macOS shell：
+
 ```bash
-python backend/app.py
+export INSIGHTFACE_HOME="$(pwd)/local/models/insightface"
+.venv/bin/python backend/app.py
 ```
 
 本机检查：
@@ -228,20 +275,89 @@ http://<BACKEND_HOST>:<BACKEND_PORT>/
 
 ## 图像上传与 YOLO 流程
 
-第一版验收口径：
+验收主线建议改为“摄像头低频实时上传”，不先做复杂视频流：
 
 ```text
-测试图片先放到 Orange Pi
+摄像头接入 Orange Pi
+-> Orange Pi 每隔 0.5-2 秒取一帧 JPEG
 -> Orange Pi 上传图片
 -> 后端保存图片
--> 后端把 image_path 交给 YOLO adapter
--> detection_records 入库
--> Web GUI 或 API 查看识别结果
+-> 后端把 image_path 交给 YOLO adapter 和 InsightFace adapter
+-> detection_records / access_logs 入库
+-> Web GUI 展示视觉识别、门禁识别和门锁状态
 ```
 
-YOLO 模型权重、类别表、测试图片和真实推理实现由 YOLO 组交付。后端当前已预留 mock 结果，模型未交付时也能验证上传、入库和前端联调。
+测试图片上传仍然保留为备用验证方式：摄像头未接好时，先用本地图片验证上传、入库和前端联调。YOLO 模型权重、类别表、测试图片和真实推理实现由 YOLO 组交付。后端当前已接入真实 YOLO 权重；如果模型或依赖缺失，会降级为 mock 结果以保证联调不中断。人脸识别默认使用 `FACE_GALLERY_DIR` 下的授权人员图库，摄像头上传后会同步写入门禁日志，并按人脸是否匹配更新 `lock_open`。
 
-### 1. 在 Orange Pi 准备测试图片
+### 1. 摄像头低频实时上传
+
+先确认后端可访问：
+
+```bash
+curl http://<BACKEND_HOST>:<BACKEND_PORT>/api/health
+```
+
+启动摄像头模式：
+
+```bash
+python3 <EDGE_CLIENT> \
+  --base-url http://<BACKEND_HOST>:<BACKEND_PORT> \
+  --node-id <NODE_ID> \
+  --camera \
+  --camera-device 0 \
+  --camera-interval 1 \
+  --camera-count 30
+```
+
+含义：
+
+- `--camera`：进入摄像头取帧上传模式；
+- `--camera-device 0`：默认读取 `/dev/video0`；
+- `--camera-interval 1`：每秒上传一帧；
+- `--camera-count 30`：上传 30 帧后退出；演示时可去掉，让脚本持续运行。
+
+脚本会优先用 Python OpenCV 读取摄像头；如果没有 OpenCV，会自动尝试 `libcamera-still`、`fswebcam` 或 `ffmpeg`。也可以手动指定拍照命令：
+
+```bash
+python3 <EDGE_CLIENT> \
+  --base-url http://<BACKEND_HOST>:<BACKEND_PORT> \
+  --node-id <NODE_ID> \
+  --camera \
+  --camera-command 'fswebcam -d "{device}" -r {width}x{height} --no-banner "{output}"'
+```
+
+如果摄像头不是 `/dev/video0`，先查看设备：
+
+```bash
+ls /dev/video*
+```
+
+再把 `--camera-device 0` 换成正确编号或路径，例如：
+
+```bash
+--camera-device /dev/video2
+```
+
+USB UVC 摄像头接入后也可以用下面命令排查：
+
+```bash
+lsusb
+v4l2-ctl --list-devices
+fswebcam -d /dev/video0 -r 640x480 --no-banner /tmp/smart_home_camera_probe.jpg
+ls -l /tmp/smart_home_camera_probe.jpg
+```
+
+如果 `lsusb` 看不到摄像头，说明系统尚未识别设备，优先检查是否插在 Orange Pi 上、USB 口是否松动、供电是否稳定。若能看到摄像头但没有 `/dev/video*`，再考虑驱动或权限问题。
+
+当前链路已经按 USB UVC 摄像头验证通过：
+
+```text
+USB Camera -> /dev/video0 -> Orange Pi 取帧 -> POST /api/camera/upload
+-> 后端保存图片 -> YOLO 记录入库 -> 人脸门禁记录入库
+-> /api/status camera_online=true，lock_open 跟随人脸结果
+```
+
+### 2. 在 Orange Pi 准备测试图片
 
 推荐目录：
 
@@ -261,7 +377,7 @@ mkdir -p <EDGE_HOME>/test_images
 <EDGE_HOME>/test_images/demo.jpg
 ```
 
-### 2. 从 Orange Pi 上传图片
+### 3. 从 Orange Pi 上传图片
 
 ```bash
 python3 <EDGE_CLIENT> \
@@ -276,11 +392,13 @@ python3 <EDGE_CLIENT> \
 POST /api/camera/upload
 ```
 
-后端会保存图片并立即生成 YOLO 记录。查看结果：
+后端会保存图片并立即生成 YOLO 记录和人脸门禁记录。查看结果：
 
 ```text
 GET /api/yolo/latest
 GET /api/yolo/history
+GET /api/face/latest
+GET /api/face/history
 ```
 
 ## 当前已确认接口
@@ -301,6 +419,9 @@ POST /api/camera/upload
 POST /api/yolo/detect
 GET  /api/yolo/latest
 GET  /api/yolo/history
+POST /api/face/verify
+GET  /api/face/latest
+GET  /api/face/history
 ```
 
 ## 关机与下次恢复
