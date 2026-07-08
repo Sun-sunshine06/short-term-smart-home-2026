@@ -21,3 +21,8 @@ models/*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+
+# Training dataset (excluded from repo)
+training/data/
+

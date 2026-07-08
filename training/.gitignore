@@ -1,13 +1,7 @@
 # Local datasets
 data/
 
-# Generated outputs
-runs/
-
-# Model weights are shared separately, not committed to git.
-models/*.pt
-models/*.onnx
-*.pt
+# Keep training artifacts and model weights in this handoff repo.
 
 # Local face galleries/uploads created by backend or demos
 face_gallery/
