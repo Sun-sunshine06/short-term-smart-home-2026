@@ -89,6 +89,7 @@ def detect_image(image_path: str) -> dict[str, Any]:
     if not image_path:
         raise ValueError("image_path is required")
 
+    source_path = _resolve_path(image_path)
     model, model_path, status = _load_yolo_model()
     if model is None:
         result = _mock_detection(image_path)
@@ -96,7 +97,7 @@ def detect_image(image_path: str) -> dict[str, Any]:
         return result
 
     conf = _confidence_threshold()
-    results = model.predict(source=image_path, conf=conf, verbose=False)
+    results = model.predict(source=str(source_path), conf=conf, verbose=False)
     first = results[0]
     detections: list[dict[str, Any]] = []
     names = getattr(first, "names", {}) or {}

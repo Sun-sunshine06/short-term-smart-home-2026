@@ -14,6 +14,13 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _resolve_image_path(path: str) -> Path:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    return _project_root() / candidate
+
+
 def _threshold() -> float:
     try:
         return float(os.environ.get("FACE_SIMILARITY_THRESHOLD", DEFAULT_FACE_THRESHOLD))
@@ -90,7 +97,8 @@ def verify_face(image_path: str) -> dict[str, Any]:
 
     threshold = _threshold()
     min_margin = _min_margin()
-    training_result = _try_training_face_service(image_path, threshold, min_margin)
+    resolved_image_path = str(_resolve_image_path(image_path))
+    training_result = _try_training_face_service(resolved_image_path, threshold, min_margin)
     if training_result is not None:
         return training_result
 
