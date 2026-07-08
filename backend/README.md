@@ -41,7 +41,21 @@ python scripts\simulate_orange_pi.py
 
 ## Vision Models
 
-Model weights are not committed to Git. Put local weights under `../training/models/` or set explicit environment variables:
+YOLO inference weights are committed under `../training/models/`. InsightFace `buffalo_l` weights are distributed as a GitHub Release asset because several ONNX files are larger than GitHub's normal Git file limit.
+
+Release asset:
+
+```text
+https://github.com/Sun-sunshine06/short-term-smart-home-2026/releases/download/vision-models-v1/buffalo_l.zip
+```
+
+For offline InsightFace runs, unzip `buffalo_l.zip` to:
+
+```text
+<USER_HOME>/.insightface/models/buffalo_l/
+```
+
+Then set explicit environment variables if needed:
 
 ```powershell
 $env:MODEL_PATH="<PROJECT_ROOT>\training\models\object_fire400_drone2800_yolo26s_v1_best.pt"

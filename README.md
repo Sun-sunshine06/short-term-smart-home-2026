@@ -21,6 +21,7 @@ backend/
     simulate_orange_pi.py Orange Pi AIpro 模拟上报脚本
 edge/
   orange_pi_client.py     香橙派端 HTTP 上报与命令轮询脚本
+training/                 YOLO 物体检测与 InsightFace 人脸门禁代码、权重和验收样例
 docs/
   official/              可共享的官方题目文档
   courseware/
@@ -53,6 +54,13 @@ local/                   本地材料，默认不提交 Git
 题目为智能家居模型，重点包括自动门禁、摄像头、本地保存照片、YOLO 物体识别、人脸识别开门、温度监控、门窗状态、灯光亮度、GUI、历史数据查询和后端数据库。
 
 当前技术判断：短期内优先使用本地电脑作为后端和算法运行环境，YOLO 可先用预训练模型完成通用物体识别，数据库优先 SQLite，GUI 优先 Web。
+
+## 视觉模型权重
+
+- YOLO 推理权重已提交到仓库：`training/models/object_fire400_drone2800_yolo26s_v1_best.pt`。
+- InsightFace `buffalo_l` ONNX 权重体积较大，放在 GitHub Release：`vision-models-v1`。
+- 下载地址：`https://github.com/Sun-sunshine06/short-term-smart-home-2026/releases/download/vision-models-v1/buffalo_l.zip`。
+- 离线运行人脸识别时，将 `buffalo_l.zip` 解压到 `<USER_HOME>/.insightface/models/buffalo_l/`。
 
 ## 后端原型
 
