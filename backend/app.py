@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -205,6 +206,9 @@ def init_db() -> None:
                 result_image_path TEXT,
                 model_name TEXT,
                 model_weights TEXT,
+                source TEXT,
+                node_id TEXT,
+                inference_ms REAL,
                 labels TEXT NOT NULL DEFAULT '[]',
                 confidence REAL,
                 detections TEXT NOT NULL DEFAULT '[]',
@@ -253,6 +257,7 @@ def init_db() -> None:
                 second_best_identity_match TEXT,
                 top_matches TEXT,
                 skipped TEXT,
+                source_detection_id INTEGER,
                 image_path TEXT,
                 raw_json TEXT NOT NULL DEFAULT '{}',
                 created_at TEXT NOT NULL
@@ -261,6 +266,9 @@ def init_db() -> None:
         )
         ensure_column(conn, "detection_records", "model_name", "TEXT")
         ensure_column(conn, "detection_records", "model_weights", "TEXT")
+        ensure_column(conn, "detection_records", "source", "TEXT")
+        ensure_column(conn, "detection_records", "node_id", "TEXT")
+        ensure_column(conn, "detection_records", "inference_ms", "REAL")
         ensure_column(conn, "authorized_users", "identity", "TEXT")
         ensure_column(conn, "authorized_users", "active", "INTEGER NOT NULL DEFAULT 1")
         ensure_column(conn, "authorized_users", "updated_at", "TEXT")
@@ -279,6 +287,31 @@ def init_db() -> None:
         ensure_column(conn, "access_logs", "second_best_identity_match", "TEXT")
         ensure_column(conn, "access_logs", "top_matches", "TEXT")
         ensure_column(conn, "access_logs", "skipped", "TEXT")
+        ensure_column(conn, "access_logs", "source_detection_id", "INTEGER")
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_sensor_records_created_at
+                ON sensor_records(created_at);
+            CREATE INDEX IF NOT EXISTS idx_device_commands_status_id
+                ON device_commands(status, id);
+            CREATE INDEX IF NOT EXISTS idx_edge_heartbeats_node_id_id
+                ON edge_heartbeats(node_id, id);
+            CREATE INDEX IF NOT EXISTS idx_edge_heartbeats_created_at
+                ON edge_heartbeats(created_at);
+            CREATE INDEX IF NOT EXISTS idx_detection_records_created_at
+                ON detection_records(created_at);
+            CREATE INDEX IF NOT EXISTS idx_detection_records_source_node
+                ON detection_records(source, node_id);
+            CREATE INDEX IF NOT EXISTS idx_access_logs_created_at
+                ON access_logs(created_at);
+            CREATE INDEX IF NOT EXISTS idx_access_logs_source_detection_id
+                ON access_logs(source_detection_id);
+            CREATE INDEX IF NOT EXISTS idx_authorized_users_identity
+                ON authorized_users(identity);
+            CREATE INDEX IF NOT EXISTS idx_face_gallery_images_user_id_id
+                ON face_gallery_images(user_id, id);
+            """
+        )
 
         existing_profile = conn.execute("SELECT * FROM hardware_profiles LIMIT 1").fetchone()
         if existing_profile is None:
@@ -450,11 +483,16 @@ def save_camera_upload() -> tuple[str | None, dict[str, Any], str | None]:
 def create_yolo_record(payload: dict[str, Any]) -> sqlite3.Row:
     image_path = payload.get("image_path")
     adapter_result: dict[str, Any] = {}
+    measured_inference_ms: float | None = None
 
     if image_path and "detections" not in payload:
+        started_at = time.perf_counter()
         adapter_result = detect_image(str(image_path))
+        measured_inference_ms = round((time.perf_counter() - started_at) * 1000, 2)
 
     merged = {**payload, **adapter_result}
+    if merged.get("inference_ms") is None and measured_inference_ms is not None:
+        merged["inference_ms"] = measured_inference_ms
     detections = merged.get("detections", [])
     labels = payload.get("labels")
     if labels is None:
@@ -469,15 +507,18 @@ def create_yolo_record(payload: dict[str, Any]) -> sqlite3.Row:
         cursor = conn.execute(
             """
             INSERT INTO detection_records
-                (image_path, result_image_path, model_name, model_weights, labels, confidence,
-                 detections, raw_result_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (image_path, result_image_path, model_name, model_weights, source, node_id,
+                 inference_ms, labels, confidence, detections, raw_result_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 merged.get("image_path") or image_path,
                 merged.get("result_image_path"),
                 model.get("name"),
                 model.get("weights"),
+                merged.get("source"),
+                merged.get("node_id"),
+                merged.get("inference_ms"),
                 json.dumps(labels or [], ensure_ascii=False),
                 confidence,
                 json.dumps(detections or [], ensure_ascii=False),
@@ -516,8 +557,8 @@ def create_face_record(payload: dict[str, Any]) -> sqlite3.Row:
                 (user_id, user_name, result, matched, score, threshold,
                  min_margin, score_margin, det_score, engine, model_pack,
                  bbox, landmarks_5, best_match, second_best_identity_match,
-                 top_matches, skipped, image_path, raw_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 top_matches, skipped, source_detection_id, image_path, raw_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(user_id) if user_id is not None else None,
@@ -539,6 +580,7 @@ def create_face_record(payload: dict[str, Any]) -> sqlite3.Row:
                 else None,
                 json.dumps(merged.get("top_matches"), ensure_ascii=False) if merged.get("top_matches") is not None else None,
                 json.dumps(merged.get("skipped"), ensure_ascii=False) if merged.get("skipped") is not None else None,
+                merged.get("source_detection_id"),
                 image_path,
                 json.dumps(merged, ensure_ascii=False),
                 utc_now(),
@@ -1237,6 +1279,7 @@ def create_app() -> Flask:
                     **payload,
                     "image_path": image_path,
                     "trigger": payload.get("trigger") or "manual_verify_latest",
+                    "source_detection_id": source_record["id"],
                     "source_yolo_record_id": source_record["id"],
                 }
             )

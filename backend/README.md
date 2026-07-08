@@ -96,6 +96,33 @@ POST /api/face/users/<id>/images
 GET  /api/face/gallery
 ```
 
+## Database Maintenance
+
+The backend auto-migrates small SQLite schema changes at startup. Current runtime tables include indexes for command polling, heartbeat history, sensor history, YOLO history, face-access history, authorized users, and face-gallery lookup.
+
+YOLO records now store `source`, `node_id`, and `inference_ms`. Face access logs store `source_detection_id` when verification is triggered from the latest camera frame, so the backend can trace which YOLO frame was used for a door-access decision.
+
+Camera demos can create many uploaded frames and annotated YOLO result images. Use the cleanup script in dry-run mode first:
+
+```powershell
+python backend\scripts\cleanup_runtime_data.py --db backend\data\smart_home.db
+```
+
+Apply cleanup only after checking the dry-run output:
+
+```powershell
+python backend\scripts\cleanup_runtime_data.py --db backend\data\smart_home.db --delete-files --apply
+```
+
+Useful knobs:
+
+```text
+--keep-detections 1000
+--keep-sensors 2000
+--keep-heartbeats 2000
+--keep-access-logs 500
+```
+
 ## Example Face User Registration
 
 The first version registers existing image paths instead of handling browser file uploads. If the source file exists, it is copied to `FACE_GALLERY_DIR/<identity>/` so `training/face_service.py` can read the standard InsightFace gallery layout.
