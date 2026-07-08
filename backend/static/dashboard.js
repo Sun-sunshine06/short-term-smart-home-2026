@@ -421,8 +421,11 @@ bindEvents();
 refreshAll();
 setInterval(() => {
   refreshStatus();
+  refreshLatestYolo();
+}, 1000);
+
+setInterval(() => {
   refreshHistory();
   refreshEdgeNodes();
-  refreshLatestYolo();
   refreshLatestFace();
 }, 3000);

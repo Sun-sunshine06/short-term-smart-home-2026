@@ -16,7 +16,7 @@ import urllib.request
 from typing import Any
 
 
-CLIENT_VERSION = "0.3.0"
+CLIENT_VERSION = "0.3.1"
 
 
 def post_json(base_url: str, path: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -416,7 +416,7 @@ def main() -> None:
     parser.add_argument("--camera", action="store_true", help="Capture camera frames and upload them to the backend YOLO flow.")
     parser.add_argument("--camera-device", default="0", help="Camera index or device path, for example 0 or /dev/video0.")
     parser.add_argument("--camera-count", type=int, default=0, help="Number of camera frames to upload; 0 means forever.")
-    parser.add_argument("--camera-interval", type=float, default=1.0, help="Seconds between camera frame uploads.")
+    parser.add_argument("--camera-interval", type=float, default=0.5, help="Seconds between camera frame uploads.")
     parser.add_argument("--camera-dir", default="~/smart_home_edge/captures", help="Directory for captured camera frames.")
     parser.add_argument("--camera-width", type=int, default=640, help="Requested camera frame width.")
     parser.add_argument("--camera-height", type=int, default=480, help="Requested camera frame height.")

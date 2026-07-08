@@ -312,16 +312,18 @@ python3 <EDGE_CLIENT> \
   --node-id <NODE_ID> \
   --camera \
   --camera-device 0 \
-  --camera-interval 1 \
-  --camera-count 30
+  --camera-interval 0.5 \
+  --camera-count 60
 ```
 
 含义：
 
 - `--camera`：进入摄像头取帧上传模式；
 - `--camera-device 0`：默认读取 `/dev/video0`；
-- `--camera-interval 1`：每秒上传一帧；
-- `--camera-count 30`：上传 30 帧后退出；演示时可去掉，让脚本持续运行。
+- `--camera-interval 0.5`：约每秒上传两帧；
+- `--camera-count 60`：上传 60 帧后退出；演示时可去掉，让脚本持续运行。
+
+如果后端 YOLO 主机负载较高、网络不稳定或画面开始明显排队延迟，把 `--camera-interval` 调回 `0.8` 或 `1`。如果主机性能足够并且 YOLO 推理能跟上，可以继续试 `0.3`，但不建议把验收默认值压得太激进。
 
 脚本会优先用 Python OpenCV 读取摄像头；如果没有 OpenCV，会自动尝试 `libcamera-still`、`fswebcam` 或 `ffmpeg`。也可以手动指定拍照命令：
 
