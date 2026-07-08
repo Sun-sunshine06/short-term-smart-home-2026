@@ -47,6 +47,11 @@
           <strong id="lockState">--</strong>
           <span class="metric-note">人脸门禁结果</span>
         </article>
+        <article class="metric metric-camera">
+          <span class="metric-label">摄像头</span>
+          <strong id="cameraState">--</strong>
+          <span class="metric-note">实时取帧状态</span>
+        </article>
       </section>
 
       <section class="workspace">
@@ -77,7 +82,27 @@
         <section class="panel vision-panel" aria-label="视觉识别">
           <div class="panel-heading">
             <h2>视觉识别</h2>
-            <p>当前先用 image_path 调用后端 adapter。</p>
+            <p id="visionUpdatedAt">等待摄像头画面</p>
+          </div>
+          <div class="vision-live">
+            <div class="camera-preview">
+              <img id="latestCameraImage" alt="最新摄像头画面" />
+              <div class="empty-state" id="cameraImageEmpty">暂无画面</div>
+            </div>
+            <div class="vision-summary">
+              <div>
+                <span class="summary-label">模型</span>
+                <strong id="visionModel">--</strong>
+              </div>
+              <div>
+                <span class="summary-label">置信度</span>
+                <strong id="visionConfidence">--</strong>
+              </div>
+              <div>
+                <span class="summary-label">标签</span>
+                <div class="label-strip" id="visionLabels"></div>
+              </div>
+            </div>
           </div>
           <label class="input-row">
             <span>图片路径</span>
