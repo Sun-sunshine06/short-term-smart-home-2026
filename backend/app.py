@@ -489,6 +489,11 @@ def create_yolo_record(payload: dict[str, Any]) -> sqlite3.Row:
         return conn.execute("SELECT * FROM detection_records WHERE id = ?", (cursor.lastrowid,)).fetchone()
 
 
+def latest_yolo_record() -> sqlite3.Row | None:
+    with connect_db() as conn:
+        return conn.execute("SELECT * FROM detection_records ORDER BY id DESC LIMIT 1").fetchone()
+
+
 def create_face_record(payload: dict[str, Any]) -> sqlite3.Row:
     image_path = payload.get("image_path")
     adapter_result: dict[str, Any] = {}
@@ -564,7 +569,7 @@ def sync_lock_state_from_face(face_record: sqlite3.Row | None) -> sqlite3.Row | 
 def camera_face_verify_enabled(payload: dict[str, Any]) -> bool:
     raw_value = payload.get("face_verify")
     if raw_value is None:
-        raw_value = os.environ.get("CAMERA_UPLOAD_FACE_VERIFY", "1")
+        raw_value = os.environ.get("CAMERA_UPLOAD_FACE_VERIFY", "0")
     parsed = parse_bool(raw_value)
     return parsed != 0
 
@@ -653,6 +658,7 @@ def create_app() -> Flask:
                 "yolo_detect": "/api/yolo/detect",
                 "face_latest": "/api/face/latest",
                 "face_verify": "/api/face/verify",
+                "face_verify_latest": "/api/face/verify-latest",
             }
         )
 
@@ -1074,8 +1080,7 @@ def create_app() -> Flask:
 
     @app.get("/api/yolo/latest")
     def yolo_latest():
-        with connect_db() as conn:
-            row = conn.execute("SELECT * FROM detection_records ORDER BY id DESC LIMIT 1").fetchone()
+        row = latest_yolo_record()
         return jsonify({"ok": True, "record": row_to_dict(row)})
 
     @app.get("/api/yolo/history")
@@ -1214,6 +1219,38 @@ def create_app() -> Flask:
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 500
         return jsonify({"ok": True, "record": row_to_dict(row), "status": row_to_dict(status_row)})
+
+    @app.post("/api/face/verify-latest")
+    def face_verify_latest():
+        payload = request.get_json(silent=True) or {}
+        source_record = latest_yolo_record()
+        if source_record is None:
+            return jsonify({"ok": False, "error": "no camera frame available"}), 404
+
+        image_path = str(payload.get("image_path") or source_record["image_path"] or "").strip()
+        if not image_path:
+            return jsonify({"ok": False, "error": "latest camera frame has no image_path"}), 404
+
+        try:
+            row = create_face_record(
+                {
+                    **payload,
+                    "image_path": image_path,
+                    "trigger": payload.get("trigger") or "manual_verify_latest",
+                    "source_yolo_record_id": source_record["id"],
+                }
+            )
+            status_row = sync_lock_state_from_face(row)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 500
+        return jsonify(
+            {
+                "ok": True,
+                "record": row_to_dict(row),
+                "source_yolo_record": row_to_dict(source_record),
+                "status": row_to_dict(status_row),
+            }
+        )
 
     @app.get("/api/face/latest")
     def face_latest():

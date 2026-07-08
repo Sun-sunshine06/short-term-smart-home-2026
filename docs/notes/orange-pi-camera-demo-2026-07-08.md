@@ -113,7 +113,7 @@ cd D:\ashotterm\backend
 D:\ashotterm\.venv\Scripts\python.exe app.py
 ```
 
-`CAMERA_UPLOAD_FACE_VERIFY=0` was used only to keep the camera + real YOLO path stable while the InsightFace model package is prepared.
+`CAMERA_UPLOAD_FACE_VERIFY=0` keeps the camera + real YOLO path lightweight and is now the recommended default. Face verification should be triggered manually from the Web GUI when a door-access check is needed.
 
 ## Code Fixes Included In This Branch
 
@@ -127,7 +127,7 @@ Two adapter fixes are included because real inference needs absolute image paths
 
 Without the YOLO path fix, uploaded camera frames saved as `backend/data/uploads/...` work in mock mode but fail in real `ultralytics` inference because the process working directory is `backend/`.
 
-## Current Known Gap
+## Face Verification Mode
 
 Face verification dependencies are installed, but the InsightFace `buffalo_l` model package still needs a clean model download or offline copy under:
 
@@ -145,13 +145,9 @@ genderage.onnx
 w600k_r50.onnx
 ```
 
-During this integration run, GitHub connectivity reset while downloading `buffalo_l.zip`, and the partial zip was invalid. Because of that, automatic face verification for each camera upload was temporarily disabled. Once the model files are present, remove or set:
+During this integration run, GitHub connectivity reset while downloading `buffalo_l.zip`, and the partial zip was invalid. Because of that, face verification was not part of the successful camera + YOLO run.
 
-```powershell
-$env:CAMERA_UPLOAD_FACE_VERIFY = "1"
-```
-
-Then restart the backend from the same venv.
+The recommended final flow is to keep `CAMERA_UPLOAD_FACE_VERIFY=0`, let camera uploads continuously refresh YOLO records, and trigger face verification only when the Web GUI calls `POST /api/face/verify-latest`. This uses the latest original camera frame, writes one access log, and updates `lock_open` without running InsightFace on every camera frame.
 
 ## Demo Notes
 
@@ -162,6 +158,7 @@ Then restart the backend from the same venv.
 
 ```text
 Orange Pi camera -> backend /api/camera/upload -> YOLO26s real inference -> Web GUI status/history
+Web GUI face button -> /api/face/verify-latest -> InsightFace access log -> lock_open update
 ```
 
 ## 中文演示提示
@@ -171,4 +168,4 @@ Orange Pi camera -> backend /api/camera/upload -> YOLO26s real inference -> Web 
 - 当前已验证的本电脑后端地址是 `http://10.75.29.155:5000/`，Web GUI 也打开这个地址。
 - `10.75.29.155` 是当前网络下本电脑的 IPv4；如果换 Wi-Fi、热点、网线或路由器，演示前必须重新查看本电脑 IPv4，并同步修改香橙派 `--base-url`。
 - 香橙派端已验证的节点 ID 是 `orange-pi-aipro-remote`，摄像头设备是 `/dev/video0`。
-- 演示主线应优先展示：摄像头实时帧上传 -> 后端生成 YOLO26s 真实推理记录 -> Web GUI 状态、历史和最新识别结果刷新。
+- 演示主线应优先展示：摄像头实时帧上传 -> 后端生成 YOLO26s 真实推理记录 -> Web GUI 状态、历史和最新识别结果刷新；需要门禁时再点击人脸识别按钮，让后端用最近一帧进行一次 InsightFace 比对。

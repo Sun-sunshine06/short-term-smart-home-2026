@@ -288,12 +288,13 @@ http://<BACKEND_HOST>:<BACKEND_PORT>/
 -> Orange Pi 每隔 0.5-2 秒取一帧 JPEG
 -> Orange Pi 上传图片
 -> 后端保存图片
--> 后端把 image_path 交给 YOLO adapter 和 InsightFace adapter
--> detection_records / access_logs 入库
--> Web GUI 展示视觉识别、门禁识别和门锁状态
+-> 后端把 image_path 交给 YOLO adapter
+-> detection_records 入库
+-> Web GUI 持续展示视觉识别结果
+-> 前端点击人脸识别时调用最近一帧做人脸比对
 ```
 
-测试图片上传仍然保留为备用验证方式：摄像头未接好时，先用本地图片验证上传、入库和前端联调。YOLO 模型权重、类别表、测试图片和真实推理实现由 YOLO 组交付。后端当前已接入真实 YOLO 权重；如果模型或依赖缺失，会降级为 mock 结果以保证联调不中断。人脸识别默认使用 `FACE_GALLERY_DIR` 下的授权人员图库，摄像头上传后会同步写入门禁日志，并按人脸是否匹配更新 `lock_open`。
+测试图片上传仍然保留为备用验证方式：摄像头未接好时，先用本地图片验证上传、入库和前端联调。YOLO 模型权重、类别表、测试图片和真实推理实现由 YOLO 组交付。后端当前已接入真实 YOLO 权重；如果模型或依赖缺失，会降级为 mock 结果以保证联调不中断。人脸识别默认使用 `FACE_GALLERY_DIR` 下的授权人员图库，但不随每一帧摄像头上传自动运行。门禁识别由前端按钮或接口 `POST /api/face/verify-latest` 触发，它会读取最近一次上传的原始图片做人脸比对，写入门禁日志，并按匹配结果更新 `lock_open`。如确实需要逐帧自动识别，可在后端显式设置 `CAMERA_UPLOAD_FACE_VERIFY=1`。
 
 ### 1. 摄像头低频实时上传
 
@@ -359,8 +360,9 @@ ls -l /tmp/smart_home_camera_probe.jpg
 
 ```text
 USB Camera -> /dev/video0 -> Orange Pi 取帧 -> POST /api/camera/upload
--> 后端保存图片 -> YOLO 记录入库 -> 人脸门禁记录入库
--> /api/status camera_online=true，lock_open 跟随人脸结果
+-> 后端保存图片 -> YOLO 记录入库
+-> /api/status camera_online=true
+-> 前端点击门禁识别 -> POST /api/face/verify-latest -> access_logs 入库，lock_open 跟随人脸结果
 ```
 
 ### 2. 在 Orange Pi 准备测试图片
@@ -398,11 +400,17 @@ python3 <EDGE_CLIENT> \
 POST /api/camera/upload
 ```
 
-后端会保存图片并立即生成 YOLO 记录和人脸门禁记录。查看结果：
+后端会保存图片并立即生成 YOLO 记录。查看目标检测结果：
 
 ```text
 GET /api/yolo/latest
 GET /api/yolo/history
+```
+
+需要做人脸门禁时，再调用：
+
+```text
+POST /api/face/verify-latest
 GET /api/face/latest
 GET /api/face/history
 ```
@@ -426,6 +434,7 @@ POST /api/yolo/detect
 GET  /api/yolo/latest
 GET  /api/yolo/history
 POST /api/face/verify
+POST /api/face/verify-latest
 GET  /api/face/latest
 GET  /api/face/history
 ```

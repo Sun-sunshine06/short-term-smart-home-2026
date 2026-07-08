@@ -308,10 +308,12 @@ async function sendCommand(target, action, value = null) {
 
 async function runVision(kind) {
   const imagePath = stateEls.imagePath.value.trim();
-  const path = kind === "face" ? "/api/face/verify" : "/api/yolo/detect";
+  const path = kind === "face" ? "/api/face/verify-latest" : "/api/yolo/detect";
+  const payload = {};
+  if (imagePath) payload.image_path = imagePath;
   const data = await api(path, {
     method: "POST",
-    body: JSON.stringify({ image_path: imagePath }),
+    body: JSON.stringify(payload),
   });
   stateEls.visionResult.textContent = JSON.stringify(data.record, null, 2);
   if (kind !== "face") {

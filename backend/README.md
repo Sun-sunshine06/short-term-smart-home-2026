@@ -63,7 +63,7 @@ $env:FACE_MODEL_PACK="buffalo_l"
 $env:FACE_GALLERY_DIR="<PROJECT_ROOT>\training\face_gallery"
 $env:FACE_SIMILARITY_THRESHOLD="0.40"
 $env:FACE_MIN_MARGIN="0.05"
-$env:CAMERA_UPLOAD_FACE_VERIFY="1"
+$env:CAMERA_UPLOAD_FACE_VERIFY="0"
 ```
 
 If the model files or optional vision dependencies are missing, the backend returns mock results so API/frontend integration can continue.
@@ -86,6 +86,7 @@ GET  /api/yolo/latest
 GET  /api/yolo/history
 POST /api/face/access
 POST /api/face/verify
+POST /api/face/verify-latest
 GET  /api/face/latest
 GET  /api/face/history
 GET  /api/face/users
@@ -153,13 +154,21 @@ JSON/base64 example:
 }
 ```
 
-The upload endpoint saves the image and immediately passes the saved `image_path` to the YOLO adapter. By default it also runs face verification against `FACE_GALLERY_DIR`, writes an access log, and updates `lock_open` according to the face result. The response includes `image_path`, `yolo_record`, `face_record`, optional `face_error`, and the updated `status`.
+The upload endpoint saves the image and immediately passes the saved `image_path` to the YOLO adapter. By default it does not run face verification, so the camera stream can keep feeding YOLO without spending extra time on every frame. The response includes `image_path`, `yolo_record`, optional `face_record`, optional `face_error`, and the updated `status` only when automatic face verification is explicitly enabled.
 
-Disable automatic face verification for camera uploads only when needed:
+Enable automatic face verification for camera uploads only for a special demo or benchmark:
 
 ```powershell
-$env:CAMERA_UPLOAD_FACE_VERIFY="0"
+$env:CAMERA_UPLOAD_FACE_VERIFY="1"
 ```
+
+For normal door-access verification, let the frontend call the latest-frame endpoint when the user clicks the face-recognition button:
+
+```text
+POST /api/face/verify-latest
+```
+
+This endpoint reads the latest `detection_records.image_path`, runs InsightFace against that original camera frame, writes an access log, and updates `lock_open`.
 
 If the image already exists on the backend computer, call YOLO directly:
 

@@ -10,7 +10,7 @@ The client uses only Python standard library modules, so it can run on openEuler
 <BACKEND_HOST>  Backend computer IPv4 address reachable from Orange Pi
 <BACKEND_PORT>  Backend port, default 5000
 <EDGE_HOME>     Orange Pi working directory, default ~/smart_home_edge
-<NODE_ID>       Stable node id, for example orange-pi-aipro-20t
+<NODE_ID>       Stable node id, for example orange-pi-aipro-ascend
 <TEST_IMAGE>    Test image path on Orange Pi
 ```
 
@@ -49,8 +49,9 @@ Recommended Orange Pi copy:
 - Sends mock sensor/status data to `POST /api/sensor/update`.
 - Polls pending backend commands from `GET /api/device/commands`.
 - Acknowledges consumed commands through `POST /api/device/commands/<id>/ack`.
-- Uploads a local image with `--upload-image`; the backend saves the image, runs YOLO, and runs face verification by default.
+- Uploads a local image with `--upload-image`; the backend saves the image and runs YOLO by default.
 - Captures low-frequency live camera frames with `--camera` and uploads each frame to the same vision flow.
+- Leaves face verification to the frontend/backend manual trigger `POST /api/face/verify-latest`, which checks the latest uploaded frame only when needed.
 - Leaves actual GPIO/PWM execution as a small function to fill after pin mapping is confirmed.
 
 ## Upload A Test Image For YOLO
@@ -70,7 +71,7 @@ python3 <EDGE_HOME>/orange_pi_client.py \
   --upload-image <EDGE_HOME>/test_images/demo.jpg
 ```
 
-This uploads the local Orange Pi image to `POST /api/camera/upload`. The backend saves it and immediately creates a YOLO detection record plus a face access record. Face verification can be disabled on the backend with `CAMERA_UPLOAD_FACE_VERIFY=0`.
+This uploads the local Orange Pi image to `POST /api/camera/upload`. The backend saves it and immediately creates a YOLO detection record. If door-access verification is needed, call `POST /api/face/verify-latest` after a frame has been uploaded. Automatic per-frame face verification can still be enabled on the backend with `CAMERA_UPLOAD_FACE_VERIFY=1`, but it is not the default path.
 
 ## Low-Frequency Live Camera Upload
 
@@ -127,6 +128,7 @@ GET /api/edge/nodes
 GET /api/edge/heartbeats
 GET /api/yolo/latest
 GET /api/yolo/history
+POST /api/face/verify-latest
 GET /api/face/latest
 GET /api/face/history
 ```
