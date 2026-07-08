@@ -65,6 +65,12 @@ YOLO 和人脸识别先运行在后端电脑上。Orange Pi 负责采集、上�
 - Orange Pi 调用 `POST /api/camera/upload` 上传本地图片，后端保存后交给 YOLO adapter；
 - 后端写入 SQLite，Web GUI 展示状态和历史数据。
 
+2026-07-08 已记录一次真实 Orange Pi + USB 摄像头联调成功结果。该次测试使用另一台香橙派 `orangepiaipro`，通过 `/dev/video0` 持续上传摄像头帧到后端电脑，并在后端项目 venv 中运行真实 YOLO26s 推理。详细记录见：
+
+```text
+docs/notes/orange-pi-camera-demo-2026-07-08.md
+```
+
 当前传感器字段仍可先用脚本模拟：
 
 - `temperature`

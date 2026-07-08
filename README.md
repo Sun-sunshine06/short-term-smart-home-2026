@@ -29,6 +29,7 @@ docs/
     yolo/                YOLO 安装、训练与使用课件
   notes/                 群聊纪要、录音有效信息提取
     orange-pi-integration-runbook.md  香橙派联调状态和重启手册
+    orange-pi-camera-demo-2026-07-08.md  香橙派摄像头实机联调记录
   proposals/             技术方案、接口讨论和任务规划
 local/                   本地材料，默认不提交 Git
 ```
@@ -107,6 +108,12 @@ GET  /api/face/gallery
 ```powershell
 cd <PROJECT_ROOT>\backend
 python scripts\simulate_orange_pi.py
+```
+
+2026-07-08 已完成一次真实 Orange Pi + USB 摄像头联调，后端电脑运行 Web GUI 和真实 YOLO 推理，香橙派持续上传摄像头帧。记录见：
+
+```text
+docs/notes/orange-pi-camera-demo-2026-07-08.md
 ```
 
 ## 域名与部署约定
