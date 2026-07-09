@@ -256,8 +256,8 @@
             <p>InsightFace gallery 与门禁验证。</p>
           </div>
 
-          <section class="face-row">
-            <section class="panel face-enroll-panel" aria-label="授权人员注册">
+          <section class="access-recognition-row">
+            <section class="panel access-recognition-panel" aria-label="人脸门禁识别">
               <div class="access-result-card" id="accessResultCard">
                 <span>最新门禁</span>
                 <strong>等待识别</strong>
@@ -285,7 +285,35 @@
                   <div><dt>时间</dt><dd id="faceTimeText">--</dd></div>
                 </div>
               </div>
+            </section>
 
+            <section class="panel face-history-panel" aria-label="门禁识别历史">
+              <div class="panel-heading">
+                <h2>门禁识别历史</h2>
+                <p>最近点击式人脸验证记录。</p>
+              </div>
+              <div class="table-wrap compact-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>结果</th>
+                      <th>人员</th>
+                      <th>分数</th>
+                    </tr>
+                  </thead>
+                  <tbody id="faceHistoryTable"></tbody>
+                </table>
+              </div>
+            </section>
+          </section>
+
+          <section class="access-management-row">
+            <section class="panel face-enroll-panel" aria-label="新增授权人员">
+              <div class="panel-heading">
+                <h2>新增认证人员照片</h2>
+                <p>写入本地数据库和本地 gallery。</p>
+              </div>
               <div class="form-grid">
                 <label>
                   <span>姓名</span>
@@ -296,8 +324,8 @@
                   <input id="faceIdentity" placeholder="user_001" />
                 </label>
                 <label class="full-field">
-                  <span>注册照路径</span>
-                  <input id="faceImagePath" placeholder="uploads/alice_001.jpg" />
+                  <span>注册照</span>
+                  <input id="faceImagePath" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,image/png,image/jpeg,image/webp,image/bmp" />
                 </label>
               </div>
               <div class="form-actions">
@@ -307,31 +335,11 @@
                 </label>
                 <button class="primary" id="createFaceUser">新增人员</button>
               </div>
-
-              <div class="divider"></div>
-
-              <div class="form-grid">
-                <label>
-                  <span>选择人员</span>
-                  <select id="faceUserSelect"></select>
-                </label>
-                <label class="full-field">
-                  <span>追加注册照</span>
-                  <input id="extraFaceImagePath" placeholder="uploads/alice_002.jpg" />
-                </label>
-              </div>
-              <div class="form-actions">
-                <label class="check-row">
-                  <input id="copyExtraToGallery" type="checkbox" checked />
-                  <span>复制到 Gallery</span>
-                </label>
-                <button id="addFaceImage">添加注册照</button>
-              </div>
             </section>
 
-            <section class="panel face-list-panel" aria-label="授权人员列表">
+            <section class="panel face-list-panel" aria-label="已有认证人员信息">
               <div class="panel-heading">
-                <h2>门禁档案</h2>
+                <h2>已有认证人员信息</h2>
                 <p id="galleryDir">Gallery 未加载</p>
               </div>
               <div class="table-wrap compact-table">
@@ -342,6 +350,7 @@
                       <th>身份</th>
                       <th>姓名</th>
                       <th>注册照</th>
+                      <th>操作</th>
                     </tr>
                   </thead>
                   <tbody id="faceUsersTable"></tbody>
@@ -349,26 +358,6 @@
               </div>
               <div class="gallery-strip" id="galleryImages"></div>
             </section>
-          </section>
-
-          <section class="panel face-history-panel" aria-label="门禁识别历史">
-            <div class="panel-heading">
-              <h2>门禁识别历史</h2>
-              <p>最近点击式人脸验证记录。</p>
-            </div>
-            <div class="table-wrap compact-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>时间</th>
-                    <th>结果</th>
-                    <th>人员</th>
-                    <th>分数</th>
-                  </tr>
-                </thead>
-                <tbody id="faceHistoryTable"></tbody>
-              </table>
-            </div>
           </section>
         </section>
 

@@ -27,6 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DEFAULT_DB_PATH = DATA_DIR / "smart_home.db"
 DEFAULT_CAMERA_UPLOAD_DIR = DATA_DIR / "uploads" / "camera"
+DEFAULT_FACE_UPLOAD_DIR = DATA_DIR / "uploads" / "face_enroll"
 DEFAULT_FACE_GALLERY_DIR = BASE_DIR.parent / "training" / "face_gallery"
 
 
@@ -57,6 +58,10 @@ def get_db_path() -> Path:
 
 def get_camera_upload_dir() -> Path:
     return Path(os.environ.get("CAMERA_UPLOAD_DIR", DEFAULT_CAMERA_UPLOAD_DIR))
+
+
+def get_face_upload_dir() -> Path:
+    return Path(os.environ.get("FACE_UPLOAD_DIR", DEFAULT_FACE_UPLOAD_DIR))
 
 
 def get_face_gallery_dir() -> Path:
@@ -409,6 +414,31 @@ def camera_upload_filename(original_name: str | None) -> str:
     return f"{stamp}_{uuid.uuid4().hex[:8]}_{stem}{suffix}"
 
 
+def face_upload_filename(original_name: str | None) -> str:
+    fallback = "face.jpg"
+    safe_name = secure_filename(original_name or fallback) or fallback
+    suffix = Path(safe_name).suffix.lower()
+    if suffix not in ALLOWED_IMAGE_SUFFIXES:
+        suffix = ".jpg"
+    stem = Path(safe_name).stem or "face"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return f"{stamp}_{uuid.uuid4().hex[:8]}_{stem}{suffix}"
+
+
+def save_face_upload_file() -> str | None:
+    image_file = request.files.get("image") or request.files.get("face_image")
+    if image_file is None or not image_file.filename:
+        return None
+    suffix = Path(image_file.filename).suffix.lower()
+    if suffix not in ALLOWED_IMAGE_SUFFIXES:
+        raise ValueError("unsupported image file type")
+    upload_dir = get_face_upload_dir()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    target = upload_dir / face_upload_filename(image_file.filename)
+    image_file.save(target)
+    return str(target)
+
+
 def save_camera_upload() -> tuple[str | None, dict[str, Any], str | None]:
     upload_dir = get_camera_upload_dir()
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -653,6 +683,7 @@ def create_app() -> Flask:
                 "yolo_detect": "/api/yolo/detect",
                 "face_latest": "/api/face/latest",
                 "face_verify": "/api/face/verify",
+                "face_verify_latest": "/api/face/verify-latest",
             }
         )
 
@@ -1103,7 +1134,16 @@ def create_app() -> Flask:
 
     @app.post("/api/face/users")
     def create_face_user():
-        payload = request.get_json(silent=True) or {}
+        if request.files:
+            payload = request.form.to_dict()
+            try:
+                uploaded_image_path = save_face_upload_file()
+            except ValueError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
+            if uploaded_image_path:
+                payload["image_path"] = uploaded_image_path
+        else:
+            payload = request.get_json(silent=True) or {}
         name = str(payload.get("name", "")).strip()
         if not name:
             return jsonify({"ok": False, "error": "name is required"}), 400
@@ -1148,6 +1188,81 @@ def create_app() -> Flask:
                 (user_id,),
             ).fetchall()
         return jsonify({"ok": True, "user": row_to_dict(user), "images": [row_to_dict(row) for row in images]})
+
+    @app.patch("/api/face/users/<int:user_id>")
+    def update_face_user(user_id: int):
+        payload = request.get_json(silent=True) or {}
+        with connect_db() as conn:
+            user = conn.execute("SELECT * FROM authorized_users WHERE id = ?", (user_id,)).fetchone()
+            if user is None:
+                return jsonify({"ok": False, "error": "user not found"}), 404
+
+            name = str(payload.get("name") if payload.get("name") is not None else user["name"]).strip()
+            if not name:
+                return jsonify({"ok": False, "error": "name is required"}), 400
+            old_identity = user["identity"] or f"user_{user['id']:03d}"
+            new_identity = payload.get("identity")
+            new_identity = make_identity(str(new_identity)) if new_identity is not None else old_identity
+            duplicate = conn.execute(
+                "SELECT id FROM authorized_users WHERE identity = ? AND id != ?",
+                (new_identity, user_id),
+            ).fetchone()
+            if duplicate is not None:
+                return jsonify({"ok": False, "error": "identity already exists"}), 409
+
+            gallery_dir = get_face_gallery_dir()
+            old_dir = gallery_dir / old_identity
+            new_dir = gallery_dir / new_identity
+            if new_identity != old_identity and old_dir.exists():
+                if new_dir.exists():
+                    return jsonify({"ok": False, "error": "target gallery identity directory already exists"}), 409
+                new_dir.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(old_dir), str(new_dir))
+                old_prefix = str(old_dir)
+                new_prefix = str(new_dir)
+                images = conn.execute("SELECT * FROM face_gallery_images WHERE user_id = ?", (user_id,)).fetchall()
+                for image in images:
+                    image_path = image["image_path"]
+                    if image_path and str(image_path).startswith(old_prefix):
+                        conn.execute(
+                            "UPDATE face_gallery_images SET image_path = ? WHERE id = ?",
+                            (str(image_path).replace(old_prefix, new_prefix, 1), image["id"]),
+                        )
+                if user["image_path"] and str(user["image_path"]).startswith(old_prefix):
+                    conn.execute(
+                        "UPDATE authorized_users SET image_path = ? WHERE id = ?",
+                        (str(user["image_path"]).replace(old_prefix, new_prefix, 1), user_id),
+                    )
+
+            conn.execute(
+                """
+                UPDATE authorized_users
+                SET identity = ?, name = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (new_identity, name, utc_now(), user_id),
+            )
+            conn.commit()
+            updated = conn.execute("SELECT * FROM authorized_users WHERE id = ?", (user_id,)).fetchone()
+        return jsonify({"ok": True, "user": row_to_dict(updated)})
+
+    @app.delete("/api/face/users/<int:user_id>")
+    def delete_face_user(user_id: int):
+        with connect_db() as conn:
+            user = conn.execute("SELECT * FROM authorized_users WHERE id = ?", (user_id,)).fetchone()
+            if user is None:
+                return jsonify({"ok": False, "error": "user not found"}), 404
+            identity = user["identity"] or f"user_{user['id']:03d}"
+            conn.execute("DELETE FROM face_gallery_images WHERE user_id = ?", (user_id,))
+            conn.execute("DELETE FROM authorized_users WHERE id = ?", (user_id,))
+            conn.commit()
+
+        gallery_dir = get_face_gallery_dir().resolve()
+        user_gallery_dir = (gallery_dir / identity).resolve()
+        if user_gallery_dir.exists() and (user_gallery_dir == gallery_dir or gallery_dir in user_gallery_dir.parents):
+            if user_gallery_dir != gallery_dir:
+                shutil.rmtree(user_gallery_dir)
+        return jsonify({"ok": True, "deleted_user_id": user_id, "identity": identity})
 
     @app.post("/api/face/users/<int:user_id>/images")
     def add_face_user_image(user_id: int):
@@ -1214,6 +1329,37 @@ def create_app() -> Flask:
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 500
         return jsonify({"ok": True, "record": row_to_dict(row), "status": row_to_dict(status_row)})
+
+    @app.post("/api/face/verify-latest")
+    def face_verify_latest():
+        payload = request.get_json(silent=True) or {}
+        with connect_db() as conn:
+            yolo_row = conn.execute(
+                """
+                SELECT * FROM detection_records
+                WHERE image_path IS NOT NULL AND image_path != ''
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ).fetchone()
+        if yolo_row is None:
+            return jsonify({"ok": False, "error": "no latest camera image found"}), 404
+
+        image_path = yolo_row["image_path"]
+        try:
+            row = create_face_record({**payload, "image_path": image_path, "trigger": "verify_latest"})
+            status_row = sync_lock_state_from_face(row)
+        except Exception as exc:
+            return jsonify({"ok": False, "image_path": image_path, "error": str(exc)}), 500
+        return jsonify(
+            {
+                "ok": True,
+                "image_path": image_path,
+                "record": row_to_dict(row),
+                "status": row_to_dict(status_row),
+                "yolo_record": row_to_dict(yolo_row),
+            }
+        )
 
     @app.get("/api/face/latest")
     def face_latest():

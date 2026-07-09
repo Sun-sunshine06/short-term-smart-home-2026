@@ -35,9 +35,6 @@ const stateEls = {
   faceIdentity: qs("#faceIdentity"),
   faceImagePath: qs("#faceImagePath"),
   copyToGallery: qs("#copyToGallery"),
-  faceUserSelect: qs("#faceUserSelect"),
-  extraFaceImagePath: qs("#extraFaceImagePath"),
-  copyExtraToGallery: qs("#copyExtraToGallery"),
   faceFeedback: qs("#faceFeedback"),
   faceUsersTable: qs("#faceUsersTable"),
   faceHistoryTable: qs("#faceHistoryTable"),
@@ -76,6 +73,7 @@ let lastHistoryRecords = [];
 let latestYoloRecord = null;
 let latestFaceRecord = null;
 let localOverrides = {};
+let faceUsersCache = [];
 
 function boolText(value, open = "开", closed = "关") {
   return value ? open : closed;
@@ -119,11 +117,15 @@ function imageUrl(path, version = "") {
 }
 
 async function api(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: isFormData ? { ...(options.headers || {}) } : { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
   });
-  const data = await response.json();
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : { error: await response.text() };
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   return data;
 }
@@ -537,12 +539,11 @@ async function refreshEdgeNodes() {
 async function refreshFaceUsers() {
   const data = await api("/api/face/users");
   const users = data.users || [];
+  faceUsersCache = users;
   stateEls.faceUsersTable.innerHTML = "";
-  stateEls.faceUserSelect.innerHTML = "";
 
   if (users.length === 0) {
-    stateEls.faceUsersTable.innerHTML = `<tr><td colspan="4">暂无授权人员</td></tr>`;
-    stateEls.faceUserSelect.innerHTML = `<option value="">暂无人员</option>`;
+    stateEls.faceUsersTable.innerHTML = `<tr><td colspan="5">暂无授权人员</td></tr>`;
     return users;
   }
 
@@ -553,15 +554,94 @@ async function refreshFaceUsers() {
       <td>${escapeHtml(user.identity || "--")}</td>
       <td>${escapeHtml(user.name || "--")}</td>
       <td>${user.image_count ?? 0}</td>
+      <td>
+        <div class="table-actions">
+          <button class="table-action" data-edit-face-user="${user.id}">编辑</button>
+          <button class="table-action danger" data-delete-face-user="${user.id}">删除</button>
+        </div>
+      </td>
     `;
     stateEls.faceUsersTable.appendChild(row);
-
-    const option = document.createElement("option");
-    option.value = user.id;
-    option.textContent = `${user.identity || user.id} / ${user.name || "--"}`;
-    stateEls.faceUserSelect.appendChild(option);
   }
   return users;
+}
+
+function openFaceEditModal(userId) {
+  const user = faceUsersCache.find((item) => String(item.id) === String(userId));
+  if (!user) throw new Error("未找到认证人员");
+
+  stateEls.modal.classList.add("open");
+  stateEls.modal.setAttribute("aria-hidden", "false");
+  stateEls.modalEyebrow.textContent = "Access Database";
+  stateEls.modalTitle.textContent = "编辑认证人员";
+  stateEls.modalBody.innerHTML = `
+    <div class="form-grid modal-form-grid">
+      <label>
+        <span>姓名</span>
+        <input id="editFaceUserName" value="${escapeHtml(user.name || "")}" />
+      </label>
+      <label>
+        <span>身份 ID</span>
+        <input id="editFaceUserIdentity" value="${escapeHtml(user.identity || "")}" />
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button data-modal-cancel>取消</button>
+      <button class="primary" id="confirmEditFaceUser">确认修改</button>
+    </div>
+  `;
+
+  qs("[data-modal-cancel]")?.addEventListener("click", closeModal);
+  qs("#confirmEditFaceUser")?.addEventListener("click", async () => {
+    try {
+      const nextName = qs("#editFaceUserName").value.trim();
+      const nextIdentity = qs("#editFaceUserIdentity").value.trim();
+      const data = await api(`/api/face/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: nextName,
+          identity: nextIdentity,
+        }),
+      });
+      stateEls.faceFeedback.textContent = `已更新 ${data.user.identity}`;
+      closeModal();
+      await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
+    } catch (error) {
+      stateEls.faceFeedback.textContent = error.message;
+    }
+  });
+}
+
+function openFaceDeleteModal(userId) {
+  const user = faceUsersCache.find((item) => String(item.id) === String(userId));
+  if (!user) throw new Error("未找到认证人员");
+
+  stateEls.modal.classList.add("open");
+  stateEls.modal.setAttribute("aria-hidden", "false");
+  stateEls.modalEyebrow.textContent = "Access Database";
+  stateEls.modalTitle.textContent = "删除认证人员";
+  stateEls.modalBody.innerHTML = `
+    <div class="delete-warning">
+      <strong>${escapeHtml(user.identity || user.name || user.id)}</strong>
+      <p>确认删除该认证人员？这会同步删除数据库记录、注册照记录和本地 gallery 目录。</p>
+    </div>
+    <div class="modal-actions">
+      <button data-modal-cancel>取消</button>
+      <button class="primary danger-primary" id="confirmDeleteFaceUser">确认删除</button>
+    </div>
+  `;
+
+  qs("[data-modal-cancel]")?.addEventListener("click", closeModal);
+  qs("#confirmDeleteFaceUser")?.addEventListener("click", async () => {
+    try {
+      await api(`/api/face/users/${userId}`, { method: "DELETE" });
+      stateEls.faceFeedback.textContent = `已删除 ${user.identity || user.name || userId}`;
+      closeModal();
+      await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
+    } catch (error) {
+      stateEls.faceFeedback.textContent = error.message;
+    }
+  });
 }
 
 async function refreshFaceGallery() {
@@ -739,40 +819,21 @@ async function runYoloDetect() {
 async function createFaceUser() {
   const name = stateEls.faceUserName.value.trim();
   const identity = stateEls.faceIdentity.value.trim();
-  const imagePath = stateEls.faceImagePath.value.trim();
-  const payload = {
-    name,
-    copy_to_gallery: stateEls.copyToGallery.checked,
-  };
-  if (identity) payload.identity = identity;
-  if (imagePath) payload.image_path = imagePath;
+  const imageFile = stateEls.faceImagePath.files?.[0];
+  const payload = new FormData();
+  payload.append("name", name);
+  payload.append("copy_to_gallery", stateEls.copyToGallery.checked ? "1" : "0");
+  if (identity) payload.append("identity", identity);
+  if (imageFile) payload.append("image", imageFile);
 
   const data = await api("/api/face/users", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: payload,
   });
   stateEls.faceFeedback.textContent = `已新增 ${data.user.identity}`;
   stateEls.faceUserName.value = "";
   stateEls.faceIdentity.value = "";
   stateEls.faceImagePath.value = "";
-  await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
-}
-
-async function addFaceImage() {
-  const userId = stateEls.faceUserSelect.value;
-  const imagePath = stateEls.extraFaceImagePath.value.trim();
-  if (!userId) throw new Error("请选择人员");
-  if (!imagePath) throw new Error("请输入注册照路径");
-
-  const data = await api(`/api/face/users/${userId}/images`, {
-    method: "POST",
-    body: JSON.stringify({
-      image_path: imagePath,
-      copy_to_gallery: stateEls.copyExtraToGallery.checked,
-    }),
-  });
-  stateEls.faceFeedback.textContent = `注册照已添加 #${data.image.id}`;
-  stateEls.extraFaceImagePath.value = "";
   await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
 }
 
@@ -811,9 +872,24 @@ function bindEvents() {
     stateEls.faceFeedback.textContent = error.message;
   }));
 
-  qs("#addFaceImage").addEventListener("click", () => addFaceImage().catch((error) => {
-    stateEls.faceFeedback.textContent = error.message;
-  }));
+  stateEls.faceUsersTable.addEventListener("click", (event) => {
+    const editButton = event.target.closest("[data-edit-face-user]");
+    const deleteButton = event.target.closest("[data-delete-face-user]");
+    if (editButton) {
+      try {
+        openFaceEditModal(editButton.dataset.editFaceUser);
+      } catch (error) {
+        stateEls.faceFeedback.textContent = error.message;
+      }
+    }
+    if (deleteButton) {
+      try {
+        openFaceDeleteModal(deleteButton.dataset.deleteFaceUser);
+      } catch (error) {
+        stateEls.faceFeedback.textContent = error.message;
+      }
+    }
+  });
 }
 
 async function refreshAll() {
