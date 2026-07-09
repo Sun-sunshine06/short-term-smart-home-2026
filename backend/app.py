@@ -816,7 +816,10 @@ def create_app() -> Flask:
         now = utc_now()
 
         temperature = payload.get("temperature")
-        light_level = parse_int(payload.get("light_level"), 0)
+        # A sensor update is a partial update.  Keep the last reported light
+        # level when this sender does not include one, instead of treating the
+        # omitted field as zero.
+        light_level = parse_int(payload.get("light_level"))
         door_open = parse_bool(payload.get("door_open"))
         window_open = parse_bool(payload.get("window_open"))
         fan_on = parse_bool(payload.get("fan_on"))
