@@ -352,7 +352,7 @@ python3 <EDGE_CLIENT> \
 - `--camera-interval 0.5`：约每秒上传两帧；
 - `--camera-count 60`：上传 60 帧后退出；演示时可去掉，让脚本持续运行。
 
-如果后端 YOLO 主机负载较高、网络不稳定或画面开始明显排队延迟，把 `--camera-interval` 调回 `0.8` 或 `1`。如果主机性能足够并且 YOLO 推理能跟上，可以继续试 `0.3`，但不建议把验收默认值压得太激进。
+新版 `edge/orange_pi_client.py` 在摄像头模式下默认向后端发送 `async_yolo=1`，后端会快速返回上传请求，并在后台只处理最新待推理帧，避免 YOLO 推理慢时产生长队列。若需要调试单帧同步结果，可追加 `--camera-sync-yolo`。如果后端 YOLO 主机负载较高、网络不稳定或画面开始明显排队延迟，把 `--camera-interval` 调回 `0.8` 或 `1`。如果主机性能足够并且 YOLO 推理能跟上，可以继续试 `0.3`，但不建议把验收默认值压得太激进。
 
 脚本会优先用 Python OpenCV 读取摄像头；如果没有 OpenCV，会自动尝试 `libcamera-still`、`fswebcam` 或 `ffmpeg`。也可以手动指定拍照命令：
 

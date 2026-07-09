@@ -87,7 +87,9 @@ python3 <EDGE_HOME>/orange_pi_client.py \
   --camera-count 60
 ```
 
-This captures about two JPEG frames per second, uploads them to `POST /api/camera/upload`, and keeps heartbeat, mock sensor state, and command polling active. If the backend YOLO host is overloaded or the network is unstable, raise `--camera-interval` back to `0.8` or `1`.
+This captures about two JPEG frames per second, uploads them to `POST /api/camera/upload`, and keeps heartbeat, mock sensor state, and command polling active. Camera mode sends `async_yolo=1` by default, so the backend returns quickly and processes only the latest pending YOLO frame. This keeps the Web GUI closer to real time when inference is slower than capture.
+
+If you need the old behavior for debugging a single frame, add `--camera-sync-yolo`. If the backend YOLO host is still overloaded or the network is unstable, raise `--camera-interval` back to `0.8` or `1`.
 
 The default capture path is:
 

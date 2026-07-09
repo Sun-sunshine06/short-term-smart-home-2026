@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -48,6 +49,11 @@ ORANGE_PI_AIPRO_PROFILE = {
     "source_url": "http://www.orangepi.cn/html/hardWare/computerAndMicrocontrollers/details/Orange-Pi-AIpro.html",
     "note": "Board is expected to be an Ascend-based Orange Pi AIpro. Confirm the exact 8T/20T variant after replacement.",
 }
+
+
+CAMERA_YOLO_LOCK = threading.Lock()
+CAMERA_YOLO_PENDING_PAYLOAD: dict[str, Any] | None = None
+CAMERA_YOLO_WORKER: threading.Thread | None = None
 
 
 def utc_now() -> str:
@@ -493,6 +499,9 @@ def save_camera_upload() -> tuple[str | None, dict[str, Any], str | None]:
             "filename": image_file.filename,
             "upload_mode": "multipart",
         }
+        for key in ("async_yolo", "face_verify"):
+            if key in request.form:
+                payload[key] = request.form.get(key)
         return path_for_response(target), payload, None
 
     payload = request.get_json(silent=True) or {}
@@ -563,6 +572,45 @@ def create_yolo_record(payload: dict[str, Any]) -> sqlite3.Row:
         )
         conn.commit()
         return conn.execute("SELECT * FROM detection_records WHERE id = ?", (cursor.lastrowid,)).fetchone()
+
+
+def camera_upload_async_yolo_enabled(payload: dict[str, Any]) -> bool:
+    raw_value = payload.get("async_yolo")
+    if raw_value is None:
+        raw_value = os.environ.get("CAMERA_UPLOAD_ASYNC_YOLO")
+    if raw_value is None:
+        return str(payload.get("source") or "").startswith("orange_pi_camera")
+    return bool(parse_bool(raw_value))
+
+
+def camera_yolo_worker() -> None:
+    global CAMERA_YOLO_PENDING_PAYLOAD, CAMERA_YOLO_WORKER
+    while True:
+        with CAMERA_YOLO_LOCK:
+            payload = CAMERA_YOLO_PENDING_PAYLOAD
+            CAMERA_YOLO_PENDING_PAYLOAD = None
+            if payload is None:
+                CAMERA_YOLO_WORKER = None
+                return
+        try:
+            create_yolo_record(payload)
+        except Exception as exc:
+            print(f"camera async yolo error: {exc}", flush=True)
+
+
+def enqueue_latest_camera_yolo(payload: dict[str, Any]) -> bool:
+    global CAMERA_YOLO_PENDING_PAYLOAD, CAMERA_YOLO_WORKER
+    with CAMERA_YOLO_LOCK:
+        replaced_pending = CAMERA_YOLO_PENDING_PAYLOAD is not None
+        CAMERA_YOLO_PENDING_PAYLOAD = dict(payload)
+        if CAMERA_YOLO_WORKER is None or not CAMERA_YOLO_WORKER.is_alive():
+            CAMERA_YOLO_WORKER = threading.Thread(
+                target=camera_yolo_worker,
+                name="camera-yolo-latest-worker",
+                daemon=True,
+            )
+            CAMERA_YOLO_WORKER.start()
+        return replaced_pending
 
 
 def latest_yolo_record() -> sqlite3.Row | None:
@@ -1120,10 +1168,19 @@ def create_app() -> Flask:
             "image_path": image_path,
             "source": upload_payload.get("source") or "orange_pi_camera",
         }
-        try:
-            row = create_yolo_record(payload)
-        except Exception as exc:
-            return jsonify({"ok": False, "image_path": image_path, "error": str(exc)}), 500
+        async_yolo = camera_upload_async_yolo_enabled(payload)
+        yolo_row = None
+        yolo_error = None
+        queued = False
+        replaced_pending = False
+        if async_yolo:
+            replaced_pending = enqueue_latest_camera_yolo(payload)
+            queued = True
+        else:
+            try:
+                yolo_row = create_yolo_record(payload)
+            except Exception as exc:
+                return jsonify({"ok": False, "image_path": image_path, "error": str(exc)}), 500
 
         face_row = None
         face_error = None
@@ -1139,7 +1196,11 @@ def create_app() -> Flask:
             {
                 "ok": True,
                 "image_path": image_path,
-                "yolo_record": row_to_dict(row),
+                "queued": queued,
+                "async_yolo": async_yolo,
+                "replaced_pending_yolo_frame": replaced_pending,
+                "yolo_record": row_to_dict(yolo_row),
+                "yolo_error": yolo_error,
                 "face_record": row_to_dict(face_row),
                 "face_error": face_error,
                 "status": row_to_dict(lock_status),

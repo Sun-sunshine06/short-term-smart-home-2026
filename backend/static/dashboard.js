@@ -75,6 +75,7 @@ let latestYoloRecord = null;
 let latestFaceRecord = null;
 let localOverrides = {};
 let faceUsersCache = [];
+let latestYoloImageKey = "";
 
 function boolText(value, open = "开", closed = "关") {
   return value ? open : closed;
@@ -240,6 +241,7 @@ function renderLatestYolo(record) {
     stateEls.latestCameraImage.removeAttribute("src");
     stateEls.latestCameraImage.parentElement.classList.remove("has-image");
     stateEls.visionResult.textContent = "等待 YOLO 识别结果";
+    latestYoloImageKey = "";
     return;
   }
 
@@ -257,11 +259,16 @@ function renderLatestYolo(record) {
   stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
 
   if (imagePath) {
-    stateEls.latestCameraImage.src = imageUrl(imagePath, record.id || record.created_at || Date.now());
+    const imageKey = `${record.id || record.created_at || ""}:${imagePath}`;
+    if (imageKey !== latestYoloImageKey) {
+      stateEls.latestCameraImage.src = imageUrl(imagePath, record.id || record.created_at || Date.now());
+      latestYoloImageKey = imageKey;
+    }
     stateEls.latestCameraImage.parentElement.classList.add("has-image");
   } else {
     stateEls.latestCameraImage.removeAttribute("src");
     stateEls.latestCameraImage.parentElement.classList.remove("has-image");
+    latestYoloImageKey = "";
   }
 }
 
@@ -916,7 +923,7 @@ refreshAll();
 setInterval(() => {
   refreshStatus();
   refreshLatestYolo();
-}, 1000);
+}, 700);
 
 setInterval(() => {
   refreshHistory();

@@ -181,7 +181,13 @@ JSON/base64 example:
 }
 ```
 
-The upload endpoint saves the image and immediately passes the saved `image_path` to the YOLO adapter. By default it does not run face verification, so the camera stream can keep feeding YOLO without spending extra time on every frame. The response includes `image_path`, `yolo_record`, optional `face_record`, optional `face_error`, and the updated `status` only when automatic face verification is explicitly enabled.
+The upload endpoint saves the image and passes the saved `image_path` to the YOLO adapter. Camera streams can set `async_yolo=1` so the endpoint returns immediately while the backend processes only the latest pending frame in a background worker. This reduces camera stutter and avoids a stale YOLO backlog when frames arrive faster than inference can finish. The response includes `image_path`, `queued`, `async_yolo`, optional `yolo_record`, optional `face_record`, optional `face_error`, and the updated `status` only when automatic face verification is explicitly enabled.
+
+For synchronous single-image tests, send `async_yolo=0` or leave it unset for non-camera uploads. To force the old synchronous camera behavior:
+
+```powershell
+$env:CAMERA_UPLOAD_ASYNC_YOLO="0"
+```
 
 Enable automatic face verification for camera uploads only for a special demo or benchmark:
 

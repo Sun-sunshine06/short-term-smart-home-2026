@@ -16,7 +16,7 @@ import urllib.request
 from typing import Any
 
 
-CLIENT_VERSION = "0.3.1"
+CLIENT_VERSION = "0.3.2"
 
 
 def post_json(base_url: str, path: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -183,21 +183,32 @@ def build_heartbeat_payload(node_id: str, name: str) -> dict[str, Any]:
     }
 
 
-def upload_image(base_url: str, image_path: str, node_id: str, source: str, timeout: float) -> dict[str, Any]:
+def upload_image(
+    base_url: str,
+    image_path: str,
+    node_id: str,
+    source: str,
+    timeout: float,
+    async_yolo: bool | None = None,
+) -> dict[str, Any]:
+    fields: dict[str, Any] = {
+        "source": source,
+        "node_id": node_id,
+    }
+    if async_yolo is not None:
+        fields["async_yolo"] = "1" if async_yolo else "0"
     response = post_multipart_file(
         base_url,
         "/api/camera/upload",
         image_path,
-        {
-            "source": source,
-            "node_id": node_id,
-        },
+        fields,
         timeout,
     )
     record = response.get("yolo_record") or {}
     print(
         "image upload: "
         f"ok={response.get('ok')} "
+        f"queued={response.get('queued')} "
         f"image_path={response.get('image_path')} "
         f"model={record.get('model_name') or '--'}"
     )
@@ -365,7 +376,14 @@ def run_camera_loop(base_url: str, node_id: str, args: argparse.Namespace) -> No
                 args.camera_command,
             )
             print(f"camera frame #{step + 1}: {frame_path}")
-            upload_image(base_url, frame_path, node_id, args.image_source, args.timeout)
+            upload_image(
+                base_url,
+                frame_path,
+                node_id,
+                args.image_source,
+                args.timeout,
+                async_yolo=not args.camera_sync_yolo,
+            )
             camera_online = True
         except urllib.error.URLError as exc:
             print(f"camera upload network error: {exc}")
@@ -421,6 +439,16 @@ def main() -> None:
     parser.add_argument("--camera-width", type=int, default=640, help="Requested camera frame width.")
     parser.add_argument("--camera-height", type=int, default=480, help="Requested camera frame height.")
     parser.add_argument(
+        "--camera-sync-yolo",
+        action="store_true",
+        help="Wait for YOLO inference before capturing the next camera frame. Default keeps camera upload smooth by queueing latest-frame inference on the backend.",
+    )
+    parser.add_argument(
+        "--async-yolo-upload",
+        action="store_true",
+        help="Queue YOLO inference for --upload-image instead of waiting for the detection result.",
+    )
+    parser.add_argument(
         "--camera-command",
         help='Optional capture command template, for example: fswebcam -d "{device}" -r {width}x{height} --no-banner "{output}"',
     )
@@ -446,7 +474,14 @@ def main() -> None:
 
     if args.upload_image:
         try:
-            upload_image(base_url, args.upload_image, node_id, args.image_source, args.timeout)
+            upload_image(
+                base_url,
+                args.upload_image,
+                node_id,
+                args.image_source,
+                args.timeout,
+                async_yolo=args.async_yolo_upload,
+            )
         except urllib.error.URLError as exc:
             print(f"image upload network error: {exc}")
         except Exception as exc:
