@@ -1,7 +1,12 @@
 const qs = (selector) => document.querySelector(selector);
+const qsa = (selector) => Array.from(document.querySelectorAll(selector));
 
 const stateEls = {
   connection: qs("#connectionStatus"),
+  lastUpdatedAt: qs("#lastUpdatedAt"),
+  heroTemp: qs("#heroTemp"),
+  heroCamera: qs("#heroCamera"),
+  heroLock: qs("#heroLock"),
   temperature: qs("#temperature"),
   door: qs("#doorState"),
   window: qs("#windowState"),
@@ -10,15 +15,14 @@ const stateEls = {
   lock: qs("#lockState"),
   camera: qs("#cameraState"),
   history: qs("#historyTable"),
+  historyHead: qs("#historyTableHead"),
   profile: qs("#hardwareProfile"),
   feedback: qs("#controlFeedback"),
-  brightness: qs("#brightnessSlider"),
-  brightnessOutput: qs("#brightnessOutput"),
   imagePath: qs("#imagePath"),
   visionResult: qs("#visionResult"),
+  visionResultTitle: qs("#visionResultTitle"),
   visionUpdatedAt: qs("#visionUpdatedAt"),
   latestCameraImage: qs("#latestCameraImage"),
-  cameraImageEmpty: qs("#cameraImageEmpty"),
   visionModel: qs("#visionModel"),
   visionConfidence: qs("#visionConfidence"),
   visionLabels: qs("#visionLabels"),
@@ -34,7 +38,39 @@ const stateEls = {
   galleryDir: qs("#galleryDir"),
   galleryImages: qs("#galleryImages"),
   edgeNodeCard: qs("#edgeNodeCard"),
+  accessResultCard: qs("#accessResultCard"),
+  modal: qs("#deviceModal"),
+  modalTitle: qs("#modalTitle"),
+  modalEyebrow: qs("#modalEyebrow"),
+  modalBody: qs("#modalBody"),
 };
+
+const statusCards = {
+  temperature: qs('[data-status-card="temperature"]'),
+  door: qs('[data-status-card="door"]'),
+  window: qs('[data-status-card="window"]'),
+  light: qs('[data-status-card="light"]'),
+  fan: qs('[data-status-card="fan"]'),
+  lock: qs('[data-status-card="lock"]'),
+  camera: qs('[data-status-card="camera"]'),
+};
+
+const historyFields = [
+  { key: "temperature", label: "温度", format: (record) => record.temperature ?? "--" },
+  { key: "door_open", label: "门", format: (record) => boolText(record.door_open, "开", "关") },
+  { key: "window_open", label: "窗", format: (record) => boolText(record.window_open, "开", "关") },
+  { key: "light_level", label: "灯光", format: (record) => record.light_level ?? "--" },
+  { key: "fan_on", label: "风扇", format: (record) => boolText(record.fan_on, "开", "关") },
+  { key: "lock_open", label: "门锁", format: (record) => boolText(record.lock_open, "开", "关") },
+];
+
+const previousStatus = {};
+const charts = {};
+let lastHistoryRecords = [];
+let currentVisionMode = "yolo";
+let latestYoloRecord = null;
+let latestFaceRecord = null;
+let localOverrides = {};
 
 function boolText(value, open = "开", closed = "关") {
   return value ? open : closed;
@@ -52,7 +88,7 @@ function escapeHtml(value) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
+    .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
 
@@ -87,25 +123,106 @@ async function api(path, options = {}) {
   return data;
 }
 
+function mergedStatus(data) {
+  return { ...data, ...localOverrides };
+}
+
+function setPage(pageName) {
+  qsa(".page-view").forEach((page) => {
+    page.classList.toggle("active", page.dataset.page === pageName);
+  });
+  qsa("[data-page-target]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.pageTarget === pageName);
+  });
+  if (pageName === "data") {
+    setTimeout(() => Object.values(charts).forEach((chart) => chart && chart.resize()), 80);
+  }
+}
+
+function animateTextChange(element, nextValue) {
+  if (!element) return;
+  const value = String(nextValue);
+  if (element.textContent === value) return;
+  element.textContent = value;
+  element.animate(
+    [
+      { opacity: 0.3, transform: "translateY(4px)" },
+      { opacity: 1, transform: "translateY(0)" },
+    ],
+    { duration: 260, easing: "ease-out" },
+  );
+}
+
+function setCardState(name, active, offline = false, rawValue = "") {
+  const card = statusCards[name];
+  if (!card) return;
+  card.classList.toggle("is-active", Boolean(active));
+  card.classList.toggle("is-offline", Boolean(offline));
+
+  const previous = previousStatus[name];
+  if (previous !== undefined && previous !== rawValue) {
+    card.classList.remove("is-changed");
+    void card.offsetWidth;
+    card.classList.add("is-changed");
+  }
+  previousStatus[name] = rawValue;
+}
+
+function pulseFeedback(element) {
+  if (!element) return;
+  element.classList.remove("is-fresh");
+  void element.offsetWidth;
+  element.classList.add("is-fresh");
+  setTimeout(() => element.classList.remove("is-fresh"), 800);
+}
+
+function applyStatusToUi(data) {
+  const temperatureText = data.temperature == null ? "--" : `${Number(data.temperature).toFixed(1)}°C`;
+  const doorText = boolText(data.door_open, "开启", "关闭");
+  const windowText = boolText(data.window_open, "开启", "关闭");
+  const lightText = `${data.light_level ?? 0}%`;
+  const fanText = localOverrides.fan_level != null
+    ? `${localOverrides.fan_level} 档`
+    : boolText(data.fan_on, "运行", "停止");
+  const lockText = boolText(data.lock_open, "已开", "已锁");
+  const cameraText = boolText(data.camera_online, "在线", "离线");
+
+  stateEls.connection.textContent = data.hardware_online ? "硬件在线" : "后端在线";
+  stateEls.connection.classList.remove("offline");
+  animateTextChange(stateEls.temperature, temperatureText);
+  animateTextChange(stateEls.door, doorText);
+  animateTextChange(stateEls.window, windowText);
+  animateTextChange(stateEls.light, lightText);
+  animateTextChange(stateEls.fan, fanText);
+  animateTextChange(stateEls.lock, lockText);
+  animateTextChange(stateEls.camera, cameraText);
+  animateTextChange(stateEls.heroTemp, `温度 ${temperatureText}`);
+  animateTextChange(stateEls.heroCamera, `摄像头 ${cameraText}`);
+  animateTextChange(stateEls.heroLock, `门锁 ${lockText}`);
+  animateTextChange(stateEls.lastUpdatedAt, `更新于 ${shortTime(data.updated_at)}`);
+
+  setCardState("temperature", Number(data.temperature) >= 28, false, temperatureText);
+  setCardState("door", Boolean(data.door_open), false, String(data.door_open));
+  setCardState("window", Boolean(data.window_open), false, String(data.window_open));
+  setCardState("light", Number(data.light_level) > 0, false, lightText);
+  setCardState("fan", Boolean(data.fan_on), false, fanText);
+  setCardState("lock", Boolean(data.lock_open), false, String(data.lock_open));
+  setCardState("camera", Boolean(data.camera_online), !data.camera_online, String(data.camera_online));
+}
+
 async function refreshStatus() {
   try {
-    const data = await api("/api/status");
-    stateEls.connection.textContent = data.hardware_online ? "硬件在线" : "后端在线";
-    stateEls.connection.classList.remove("offline");
-    stateEls.temperature.textContent = data.temperature == null ? "--" : `${Number(data.temperature).toFixed(1)}°C`;
-    stateEls.door.textContent = boolText(data.door_open, "开启", "关闭");
-    stateEls.window.textContent = boolText(data.window_open, "开启", "关闭");
-    stateEls.light.textContent = `${data.light_level ?? 0}%`;
-    stateEls.fan.textContent = boolText(data.fan_on, "运行", "停止");
-    stateEls.lock.textContent = boolText(data.lock_open, "已开", "已锁");
-    stateEls.camera.textContent = boolText(data.camera_online, "在线", "离线");
+    const data = mergedStatus(await api("/api/status"));
+    applyStatusToUi(data);
   } catch (error) {
     stateEls.connection.textContent = "离线";
     stateEls.connection.classList.add("offline");
+    animateTextChange(stateEls.lastUpdatedAt, "连接失败");
   }
 }
 
 function renderLatestYolo(record) {
+  latestYoloRecord = record || null;
   if (!record) {
     stateEls.visionUpdatedAt.textContent = "等待摄像头画面";
     stateEls.visionModel.textContent = "--";
@@ -113,7 +230,7 @@ function renderLatestYolo(record) {
     stateEls.visionLabels.innerHTML = `<span class="label-chip">暂无</span>`;
     stateEls.latestCameraImage.removeAttribute("src");
     stateEls.latestCameraImage.parentElement.classList.remove("has-image");
-    stateEls.visionResult.textContent = "等待识别结果";
+    if (currentVisionMode === "yolo") stateEls.visionResult.textContent = "等待 YOLO 识别结果";
     return;
   }
 
@@ -128,7 +245,9 @@ function renderLatestYolo(record) {
   stateEls.visionLabels.innerHTML = labels
     .map((label) => `<span class="label-chip">${escapeHtml(label)}</span>`)
     .join("");
-  stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
+  if (currentVisionMode === "yolo") {
+    stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
+  }
   if (record.image_path) {
     stateEls.imagePath.value = record.image_path;
   }
@@ -148,8 +267,12 @@ async function refreshLatestYolo() {
 }
 
 function renderLatestFace(record) {
+  latestFaceRecord = record || null;
   if (!record) {
     stateEls.faceFeedback.textContent = "等待门禁识别";
+    stateEls.accessResultCard?.classList.remove("granted", "denied");
+    stateEls.accessResultCard.querySelector("strong").textContent = "等待识别";
+    if (currentVisionMode === "face") stateEls.visionResult.textContent = "等待人脸验证结果";
     return;
   }
 
@@ -158,7 +281,14 @@ function renderLatestFace(record) {
   const user = record.user_name || record.user_id || "未知人员";
   const score = Number(record.score);
   const scoreText = Number.isFinite(score) ? `，相似度 ${score.toFixed(2)}` : "";
-  stateEls.faceFeedback.textContent = `${action}：${user}${scoreText}，${shortTime(record.created_at)}`;
+  const text = `${action}：${user}${scoreText}，${shortTime(record.created_at)}`;
+  stateEls.faceFeedback.textContent = text;
+  stateEls.accessResultCard?.classList.toggle("granted", matched);
+  stateEls.accessResultCard?.classList.toggle("denied", !matched);
+  stateEls.accessResultCard.querySelector("strong").textContent = action;
+  if (currentVisionMode === "face") {
+    stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
+  }
 }
 
 async function refreshLatestFace() {
@@ -166,27 +296,139 @@ async function refreshLatestFace() {
   renderLatestFace(data.record);
 }
 
-async function refreshHistory() {
-  const data = await api("/api/history?limit=8");
+function setVisionMode(mode) {
+  currentVisionMode = mode;
+  qsa(".vision-mode-button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.visionMode === mode);
+    button.classList.toggle("primary", button.dataset.visionMode === mode);
+  });
+  stateEls.visionResultTitle.textContent = mode === "face" ? "人脸验证结果" : "YOLO 识别结果";
+  const record = mode === "face" ? latestFaceRecord : latestYoloRecord;
+  stateEls.visionResult.textContent = record ? JSON.stringify(record, null, 2) : (mode === "face" ? "等待人脸验证结果" : "等待 YOLO 识别结果");
+}
+
+function ensureChart(id, config) {
+  if (!window.Chart) return null;
+  if (charts[id]) return charts[id];
+  const canvas = qs(`#${id}`);
+  if (!canvas) return null;
+  charts[id] = new Chart(canvas, config);
+  return charts[id];
+}
+
+function updateChart(chart, labels, datasets) {
+  if (!chart) return;
+  chart.data.labels = labels;
+  chart.data.datasets.forEach((dataset, index) => {
+    dataset.data = datasets[index] || [];
+    dataset.hidden = datasets[index] === null;
+  });
+  chart.update("none");
+}
+
+function initCharts() {
+  const commonOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 260 },
+    plugins: {
+      legend: { labels: { color: "#5d7880", usePointStyle: true, boxWidth: 8 } },
+      tooltip: { mode: "index", intersect: false },
+    },
+    scales: {
+      x: { ticks: { color: "#789097", maxRotation: 0 }, grid: { display: false } },
+      y: { ticks: { color: "#789097" }, grid: { color: "rgba(20,75,82,0.08)" } },
+    },
+  };
+
+  ensureChart("temperatureChart", {
+    type: "line",
+    data: { labels: [], datasets: [{ label: "温度 °C", data: [], borderColor: "#f39b35", backgroundColor: "rgba(243,155,53,0.16)", fill: true, tension: 0.38 }] },
+    options: commonOptions,
+  });
+
+  ensureChart("lightChart", {
+    type: "line",
+    data: { labels: [], datasets: [{ label: "亮度 %", data: [], borderColor: "#20c4c7", backgroundColor: "rgba(32,196,199,0.18)", fill: true, tension: 0.38 }] },
+    options: { ...commonOptions, scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, min: 0, max: 100 } } },
+  });
+
+  ensureChart("binaryChart", {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        { label: "门", data: [], borderColor: "#4b91e2", stepped: true, tension: 0 },
+        { label: "窗", data: [], borderColor: "#20c4c7", stepped: true, tension: 0 },
+        { label: "风扇", data: [], borderColor: "#20a66a", stepped: true, tension: 0 },
+        { label: "门锁", data: [], borderColor: "#e5554f", stepped: true, tension: 0 },
+      ],
+    },
+    options: {
+      ...commonOptions,
+      scales: { ...commonOptions.scales, y: { ...commonOptions.scales.y, min: -0.1, max: 1.1, ticks: { color: "#789097", stepSize: 1 } } },
+    },
+  });
+}
+
+function selectedHistoryFields() {
+  const selected = qsa("[data-history-field]:checked").map((input) => input.dataset.historyField);
+  return selected.length ? selected : ["temperature"];
+}
+
+function sampleHistoryRecords() {
+  const now = Date.now();
+  return Array.from({ length: 12 }, (_, index) => {
+    const step = 11 - index;
+    return {
+      created_at: new Date(now - step * 180000).toISOString(),
+      temperature: Number((25.4 + Math.sin(index / 2) * 2.3).toFixed(1)),
+      door_open: index % 5 === 0,
+      window_open: index % 4 === 1,
+      light_level: 35 + ((index * 7) % 55),
+      fan_on: index % 3 === 0,
+      lock_open: index % 6 === 0,
+    };
+  }).reverse();
+}
+
+function renderHistoryCharts(records) {
+  initCharts();
+  const selected = selectedHistoryFields();
+  const ordered = [...records].reverse();
+  const labels = ordered.map((record) => shortTime(record.created_at));
+  updateChart(charts.temperatureChart, labels, [selected.includes("temperature") ? ordered.map((record) => record.temperature) : null]);
+  updateChart(charts.lightChart, labels, [selected.includes("light_level") ? ordered.map((record) => record.light_level) : null]);
+  updateChart(charts.binaryChart, labels, [
+    selected.includes("door_open") ? ordered.map((record) => Number(Boolean(record.door_open))) : null,
+    selected.includes("window_open") ? ordered.map((record) => Number(Boolean(record.window_open))) : null,
+    selected.includes("fan_on") ? ordered.map((record) => Number(Boolean(record.fan_on))) : null,
+    selected.includes("lock_open") ? ordered.map((record) => Number(Boolean(record.lock_open))) : null,
+  ]);
+}
+
+function renderHistoryTable(records) {
+  const selected = selectedHistoryFields();
+  const fields = historyFields.filter((field) => selected.includes(field.key));
+  const tableRecords = records.slice(0, 8);
+  stateEls.historyHead.innerHTML = `<tr><th>时间</th>${fields.map((field) => `<th>${field.label}</th>`).join("")}</tr>`;
   stateEls.history.innerHTML = "";
-  if (!data.records || data.records.length === 0) {
-    const row = document.createElement("tr");
-    row.innerHTML = `<td colspan="6">暂无记录</td>`;
-    stateEls.history.appendChild(row);
+  if (!tableRecords.length) {
+    stateEls.history.innerHTML = `<tr><td colspan="${fields.length + 1}">暂无记录</td></tr>`;
     return;
   }
-  for (const record of data.records) {
+  for (const record of tableRecords) {
     const row = document.createElement("tr");
-    row.innerHTML = `
-      <td>${shortTime(record.created_at)}</td>
-      <td>${record.temperature ?? "--"}</td>
-      <td>${boolText(record.door_open, "开", "关")}</td>
-      <td>${boolText(record.window_open, "开", "关")}</td>
-      <td>${record.light_level ?? "--"}</td>
-      <td>${boolText(record.fan_on, "开", "关")}</td>
-    `;
+    row.innerHTML = `<td>${shortTime(record.created_at)}</td>${fields.map((field) => `<td>${field.format(record)}</td>`).join("")}`;
     stateEls.history.appendChild(row);
   }
+}
+
+async function refreshHistory() {
+  const data = await api("/api/history?limit=50").catch(() => ({ records: [] }));
+  lastHistoryRecords = (data.records && data.records.length ? data.records : sampleHistoryRecords());
+  renderHistoryTable(lastHistoryRecords);
+  renderHistoryCharts(lastHistoryRecords);
 }
 
 async function refreshProfile() {
@@ -303,10 +545,113 @@ async function sendCommand(target, action, value = null) {
     method: "POST",
     body: JSON.stringify(payload),
   });
-  stateEls.feedback.textContent = `命令已入队 #${data.command_id}`;
+  if (stateEls.feedback) {
+    stateEls.feedback.textContent = `命令已入队 #${data.command_id}`;
+    pulseFeedback(stateEls.feedback);
+  }
+  return data;
+}
+
+async function toggleSimpleDevice(kind) {
+  const fieldMap = { door: "door_open", window: "window_open", lock: "lock_open" };
+  const actionMap = { door: ["open", "close"], window: ["open", "close"], lock: ["open", "close"] };
+  const field = fieldMap[kind];
+  const current = Boolean(localOverrides[field] ?? statusCards[kind]?.classList.contains("is-active"));
+  const next = !current;
+  localOverrides[field] = next ? 1 : 0;
+  applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
+  await sendCommand(kind, next ? actionMap[kind][0] : actionMap[kind][1]);
+}
+
+function openModal(type) {
+  stateEls.modal.classList.add("open");
+  stateEls.modal.setAttribute("aria-hidden", "false");
+  stateEls.modalEyebrow.textContent = type === "light" ? "Lighting" : "Fan";
+  stateEls.modalTitle.textContent = type === "light" ? "灯光设置" : "风扇挡位";
+  stateEls.modalBody.innerHTML = type === "light" ? lightModalHtml() : fanModalHtml();
+  bindModalActions(type);
+}
+
+function closeModal() {
+  stateEls.modal.classList.remove("open");
+  stateEls.modal.setAttribute("aria-hidden", "true");
+}
+
+function lightModalHtml() {
+  const current = Number(localOverrides.light_level ?? 55);
+  return `
+    <div class="option-grid">
+      <button class="option-card" data-light-mode="relax" data-light-level="60"><strong>休闲</strong><span>亮度 60%</span></button>
+      <button class="option-card" data-light-mode="reading" data-light-level="80"><strong>阅读</strong><span>亮度 80%</span></button>
+      <button class="option-card" data-light-mode="office" data-light-level="95"><strong>电脑办公</strong><span>亮度 95%</span></button>
+      <button class="option-card" data-light-mode="custom"><strong>自定义</strong><span>使用下方滑杆</span></button>
+    </div>
+    <label class="modal-slider">
+      <input id="modalLightLevel" type="range" min="0" max="100" value="${current}" />
+      <output id="modalLightOutput">${current}</output>
+    </label>
+    <button class="primary modal-confirm" data-close-modal>确认设定</button>
+  `;
+}
+
+function fanModalHtml() {
+  const current = Number(localOverrides.fan_level ?? (localOverrides.fan_on ? 1 : 0));
+  return `
+    <div class="option-grid">
+      ${[0, 1, 2, 3].map((level) => `
+        <button class="option-card ${current === level ? "active" : ""}" data-fan-level="${level}">
+          <strong>${level} 档</strong><span>${level === 0 ? "停止" : `风量 ${level}`}</span>
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function bindModalActions(type) {
+  if (type === "light") {
+    const slider = qs("#modalLightLevel");
+    const output = qs("#modalLightOutput");
+    slider.addEventListener("input", () => {
+      output.textContent = slider.value;
+    });
+    qsa("[data-light-mode]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        qsa("[data-light-mode]").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        const level = Number(button.dataset.lightLevel || slider.value);
+        slider.value = level;
+        output.textContent = level;
+        localOverrides.light_level = level;
+        applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
+        await sendCommand("light", "set_mode", { mode: button.dataset.lightMode, brightness: level });
+      });
+    });
+    slider.addEventListener("change", async () => {
+      const level = Number(slider.value);
+      localOverrides.light_level = level;
+      applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
+      await sendCommand("light", "set_brightness", level);
+    });
+    qs(".modal-confirm")?.addEventListener("click", closeModal);
+    return;
+  }
+
+  qsa("[data-fan-level]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const level = Number(button.dataset.fanLevel);
+      qsa("[data-fan-level]").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      localOverrides.fan_level = level;
+      localOverrides.fan_on = level > 0 ? 1 : 0;
+      applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
+      await sendCommand("fan", "set_level", level);
+      closeModal();
+    });
+  });
 }
 
 async function runVision(kind) {
+  setVisionMode(kind);
   const imagePath = stateEls.imagePath.value.trim();
   const path = kind === "face" ? "/api/face/verify-latest" : "/api/yolo/detect";
   const payload = {};
@@ -365,27 +710,31 @@ async function addFaceImage() {
 }
 
 function bindEvents() {
-  document.querySelectorAll("button[data-target]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      try {
-        await sendCommand(button.dataset.target, button.dataset.action);
-      } catch (error) {
-        stateEls.feedback.textContent = error.message;
+  qsa("[data-page-target]").forEach((button) => {
+    button.addEventListener("click", () => setPage(button.dataset.pageTarget));
+  });
+
+  qsa("[data-card-control]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const type = card.dataset.cardControl;
+      if (type === "light" || type === "fan") openModal(type);
+      if (type === "door" || type === "window" || type === "lock") toggleSimpleDevice(type).catch((error) => {
+        if (stateEls.feedback) stateEls.feedback.textContent = error.message;
+      });
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        card.click();
       }
     });
   });
 
-  stateEls.brightness.addEventListener("input", () => {
-    stateEls.brightnessOutput.textContent = stateEls.brightness.value;
-  });
-
-  qs("#sendBrightness").addEventListener("click", async () => {
-    try {
-      await sendCommand("light", "set_brightness", Number(stateEls.brightness.value));
-    } catch (error) {
-      stateEls.feedback.textContent = error.message;
-    }
-  });
+  qsa("[data-close-modal]").forEach((item) => item.addEventListener("click", closeModal));
+  qsa("[data-history-field]").forEach((input) => input.addEventListener("change", () => {
+    renderHistoryTable(lastHistoryRecords);
+    renderHistoryCharts(lastHistoryRecords);
+  }));
 
   qs("#runYolo").addEventListener("click", () => runVision("yolo").catch((error) => {
     stateEls.visionResult.textContent = error.message;
@@ -415,6 +764,7 @@ async function refreshAll() {
     refreshLatestYolo(),
     refreshLatestFace(),
   ]);
+  setVisionMode(currentVisionMode);
 }
 
 bindEvents();
