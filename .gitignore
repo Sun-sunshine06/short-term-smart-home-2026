@@ -1,5 +1,6 @@
 # Local-only materials
 local/
+test_person_*
 
 # Python/backend runtime files
 __pycache__/

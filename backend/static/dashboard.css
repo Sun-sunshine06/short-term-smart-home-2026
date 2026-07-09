@@ -672,6 +672,10 @@ select {
   margin-top: 16px;
 }
 
+.yolo-history-panel {
+  margin-top: 14px;
+}
+
 .result-box summary {
   margin-bottom: 10px;
   cursor: pointer;
@@ -692,11 +696,17 @@ pre {
   line-height: 1.5;
 }
 
+.access-recognition-row,
+.access-management-row,
 .face-row,
 .system-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
+}
+
+.access-management-row {
+  margin-top: 14px;
 }
 
 .access-result-card {
@@ -739,6 +749,78 @@ pre {
 .access-result-card.denied {
   background: linear-gradient(135deg, #f07267, #c94546);
   color: #ffffff;
+}
+
+.access-control-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.access-lock-card {
+  min-height: 96px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.access-lock-card strong {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 26px;
+}
+
+.access-lock-card p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.access-verify-button {
+  min-height: 96px;
+  border-radius: 22px;
+  font-weight: 800;
+}
+
+.access-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.72fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.access-camera-preview,
+.access-camera-preview img {
+  min-height: 240px;
+}
+
+.access-result-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.access-result-list div {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.access-result-list dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.access-result-list dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
 }
 
 .form-grid {
@@ -824,6 +906,29 @@ tbody tr {
 
 .history-panel tbody tr:hover td {
   border-bottom-color: rgba(32, 196, 199, 0.25);
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.table-action {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.table-action.danger {
+  color: var(--red);
+}
+
+.table-action.danger:hover {
+  border-color: rgba(229, 85, 79, 0.34);
+  background: rgba(229, 85, 79, 0.08);
 }
 
 .gallery-strip {
@@ -983,6 +1088,40 @@ tbody tr {
   margin-top: 18px;
 }
 
+.modal-form-grid {
+  grid-template-columns: 1fr;
+}
+
+.modal-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.danger-primary {
+  background: linear-gradient(135deg, #f07267, #c94546);
+}
+
+.delete-warning {
+  padding: 16px;
+  border: 1px solid rgba(229, 85, 79, 0.18);
+  border-radius: 20px;
+  background: rgba(229, 85, 79, 0.08);
+}
+
+.delete-warning strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--red);
+  font-size: 18px;
+}
+
+.delete-warning p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .option-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1033,6 +1172,9 @@ tbody tr {
   }
 
   .vision-live,
+  .access-preview,
+  .access-recognition-row,
+  .access-management-row,
   .face-row,
   .system-grid {
     grid-template-columns: 1fr;
@@ -1142,11 +1284,16 @@ tbody tr {
 
   .control-grid,
   .chart-grid,
+  .access-control-grid,
   .form-grid,
   .form-actions,
   .brightness-control,
   .split-actions,
   .option-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-actions {
     grid-template-columns: 1fr;
   }
 

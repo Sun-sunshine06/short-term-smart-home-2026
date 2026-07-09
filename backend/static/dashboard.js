@@ -16,25 +16,28 @@ const stateEls = {
   camera: qs("#cameraState"),
   history: qs("#historyTable"),
   historyHead: qs("#historyTableHead"),
+  yoloHistory: qs("#yoloHistoryTable"),
   profile: qs("#hardwareProfile"),
   feedback: qs("#controlFeedback"),
-  imagePath: qs("#imagePath"),
   visionResult: qs("#visionResult"),
-  visionResultTitle: qs("#visionResultTitle"),
   visionUpdatedAt: qs("#visionUpdatedAt"),
   latestCameraImage: qs("#latestCameraImage"),
   visionModel: qs("#visionModel"),
   visionConfidence: qs("#visionConfidence"),
   visionLabels: qs("#visionLabels"),
+  latestFaceImage: qs("#latestFaceImage"),
+  accessLockState: qs("#accessLockState"),
+  faceResultText: qs("#faceResultText"),
+  faceUserText: qs("#faceUserText"),
+  faceScoreText: qs("#faceScoreText"),
+  faceTimeText: qs("#faceTimeText"),
   faceUserName: qs("#faceUserName"),
   faceIdentity: qs("#faceIdentity"),
   faceImagePath: qs("#faceImagePath"),
   copyToGallery: qs("#copyToGallery"),
-  faceUserSelect: qs("#faceUserSelect"),
-  extraFaceImagePath: qs("#extraFaceImagePath"),
-  copyExtraToGallery: qs("#copyExtraToGallery"),
   faceFeedback: qs("#faceFeedback"),
   faceUsersTable: qs("#faceUsersTable"),
+  faceHistoryTable: qs("#faceHistoryTable"),
   galleryDir: qs("#galleryDir"),
   galleryImages: qs("#galleryImages"),
   edgeNodeCard: qs("#edgeNodeCard"),
@@ -67,10 +70,10 @@ const historyFields = [
 const previousStatus = {};
 const charts = {};
 let lastHistoryRecords = [];
-let currentVisionMode = "yolo";
 let latestYoloRecord = null;
 let latestFaceRecord = null;
 let localOverrides = {};
+let faceUsersCache = [];
 
 function boolText(value, open = "开", closed = "关") {
   return value ? open : closed;
@@ -114,11 +117,15 @@ function imageUrl(path, version = "") {
 }
 
 async function api(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: isFormData ? { ...(options.headers || {}) } : { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
   });
-  const data = await response.json();
+  const contentType = response.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? await response.json()
+    : { error: await response.text() };
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   return data;
 }
@@ -195,6 +202,7 @@ function applyStatusToUi(data) {
   animateTextChange(stateEls.light, lightText);
   animateTextChange(stateEls.fan, fanText);
   animateTextChange(stateEls.lock, lockText);
+  animateTextChange(stateEls.accessLockState, lockText);
   animateTextChange(stateEls.camera, cameraText);
   animateTextChange(stateEls.heroTemp, `温度 ${temperatureText}`);
   animateTextChange(stateEls.heroCamera, `摄像头 ${cameraText}`);
@@ -230,7 +238,7 @@ function renderLatestYolo(record) {
     stateEls.visionLabels.innerHTML = `<span class="label-chip">暂无</span>`;
     stateEls.latestCameraImage.removeAttribute("src");
     stateEls.latestCameraImage.parentElement.classList.remove("has-image");
-    if (currentVisionMode === "yolo") stateEls.visionResult.textContent = "等待 YOLO 识别结果";
+    stateEls.visionResult.textContent = "等待 YOLO 识别结果";
     return;
   }
 
@@ -245,12 +253,7 @@ function renderLatestYolo(record) {
   stateEls.visionLabels.innerHTML = labels
     .map((label) => `<span class="label-chip">${escapeHtml(label)}</span>`)
     .join("");
-  if (currentVisionMode === "yolo") {
-    stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
-  }
-  if (record.image_path) {
-    stateEls.imagePath.value = record.image_path;
-  }
+  stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
 
   if (imagePath) {
     stateEls.latestCameraImage.src = imageUrl(imagePath, record.id || record.created_at || Date.now());
@@ -266,13 +269,41 @@ async function refreshLatestYolo() {
   renderLatestYolo(data.record);
 }
 
+async function refreshYoloHistory() {
+  const data = await api("/api/yolo/history?limit=8").catch(() => ({ records: [] }));
+  const records = data.records || [];
+  if (!stateEls.yoloHistory) return;
+  if (!records.length) {
+    stateEls.yoloHistory.innerHTML = `<tr><td colspan="4">暂无检测记录</td></tr>`;
+    return;
+  }
+  stateEls.yoloHistory.innerHTML = "";
+  for (const record of records) {
+    const labels = Array.isArray(record.labels) && record.labels.length ? record.labels.join(" / ") : "未识别";
+    const confidence = Number(record.confidence);
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${shortTime(record.created_at)}</td>
+      <td>${escapeHtml(labels)}</td>
+      <td>${Number.isFinite(confidence) ? confidence.toFixed(2) : "--"}</td>
+      <td>${escapeHtml(record.model_name || "--")}</td>
+    `;
+    stateEls.yoloHistory.appendChild(row);
+  }
+}
+
 function renderLatestFace(record) {
   latestFaceRecord = record || null;
   if (!record) {
     stateEls.faceFeedback.textContent = "等待门禁识别";
     stateEls.accessResultCard?.classList.remove("granted", "denied");
     stateEls.accessResultCard.querySelector("strong").textContent = "等待识别";
-    if (currentVisionMode === "face") stateEls.visionResult.textContent = "等待人脸验证结果";
+    stateEls.faceResultText.textContent = "--";
+    stateEls.faceUserText.textContent = "--";
+    stateEls.faceScoreText.textContent = "--";
+    stateEls.faceTimeText.textContent = "--";
+    stateEls.latestFaceImage?.removeAttribute("src");
+    stateEls.latestFaceImage?.parentElement.classList.remove("has-image");
     return;
   }
 
@@ -286,8 +317,15 @@ function renderLatestFace(record) {
   stateEls.accessResultCard?.classList.toggle("granted", matched);
   stateEls.accessResultCard?.classList.toggle("denied", !matched);
   stateEls.accessResultCard.querySelector("strong").textContent = action;
-  if (currentVisionMode === "face") {
-    stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
+  stateEls.faceResultText.textContent = matched ? "通过" : "拒绝";
+  stateEls.faceUserText.textContent = user;
+  stateEls.faceScoreText.textContent = Number.isFinite(score) ? score.toFixed(3) : "--";
+  stateEls.faceTimeText.textContent = shortTime(record.created_at);
+
+  const imagePath = record.image_path || latestYoloRecord?.image_path || latestYoloRecord?.result_image_path;
+  if (imagePath && stateEls.latestFaceImage) {
+    stateEls.latestFaceImage.src = imageUrl(imagePath, record.id || record.created_at || Date.now());
+    stateEls.latestFaceImage.parentElement.classList.add("has-image");
   }
 }
 
@@ -296,15 +334,26 @@ async function refreshLatestFace() {
   renderLatestFace(data.record);
 }
 
-function setVisionMode(mode) {
-  currentVisionMode = mode;
-  qsa(".vision-mode-button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.visionMode === mode);
-    button.classList.toggle("primary", button.dataset.visionMode === mode);
-  });
-  stateEls.visionResultTitle.textContent = mode === "face" ? "人脸验证结果" : "YOLO 识别结果";
-  const record = mode === "face" ? latestFaceRecord : latestYoloRecord;
-  stateEls.visionResult.textContent = record ? JSON.stringify(record, null, 2) : (mode === "face" ? "等待人脸验证结果" : "等待 YOLO 识别结果");
+async function refreshFaceHistory() {
+  const data = await api("/api/face/history?limit=8").catch(() => ({ records: [] }));
+  const records = data.records || [];
+  if (!stateEls.faceHistoryTable) return;
+  if (!records.length) {
+    stateEls.faceHistoryTable.innerHTML = `<tr><td colspan="4">暂无门禁记录</td></tr>`;
+    return;
+  }
+  stateEls.faceHistoryTable.innerHTML = "";
+  for (const record of records) {
+    const score = Number(record.score);
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${shortTime(record.created_at)}</td>
+      <td>${record.matched ? "通过" : "拒绝"}</td>
+      <td>${escapeHtml(record.user_name || record.user_id || "未知人员")}</td>
+      <td>${Number.isFinite(score) ? score.toFixed(3) : "--"}</td>
+    `;
+    stateEls.faceHistoryTable.appendChild(row);
+  }
 }
 
 function ensureChart(id, config) {
@@ -490,12 +539,11 @@ async function refreshEdgeNodes() {
 async function refreshFaceUsers() {
   const data = await api("/api/face/users");
   const users = data.users || [];
+  faceUsersCache = users;
   stateEls.faceUsersTable.innerHTML = "";
-  stateEls.faceUserSelect.innerHTML = "";
 
   if (users.length === 0) {
-    stateEls.faceUsersTable.innerHTML = `<tr><td colspan="4">暂无授权人员</td></tr>`;
-    stateEls.faceUserSelect.innerHTML = `<option value="">暂无人员</option>`;
+    stateEls.faceUsersTable.innerHTML = `<tr><td colspan="5">暂无授权人员</td></tr>`;
     return users;
   }
 
@@ -506,15 +554,94 @@ async function refreshFaceUsers() {
       <td>${escapeHtml(user.identity || "--")}</td>
       <td>${escapeHtml(user.name || "--")}</td>
       <td>${user.image_count ?? 0}</td>
+      <td>
+        <div class="table-actions">
+          <button class="table-action" data-edit-face-user="${user.id}">编辑</button>
+          <button class="table-action danger" data-delete-face-user="${user.id}">删除</button>
+        </div>
+      </td>
     `;
     stateEls.faceUsersTable.appendChild(row);
-
-    const option = document.createElement("option");
-    option.value = user.id;
-    option.textContent = `${user.identity || user.id} / ${user.name || "--"}`;
-    stateEls.faceUserSelect.appendChild(option);
   }
   return users;
+}
+
+function openFaceEditModal(userId) {
+  const user = faceUsersCache.find((item) => String(item.id) === String(userId));
+  if (!user) throw new Error("未找到认证人员");
+
+  stateEls.modal.classList.add("open");
+  stateEls.modal.setAttribute("aria-hidden", "false");
+  stateEls.modalEyebrow.textContent = "Access Database";
+  stateEls.modalTitle.textContent = "编辑认证人员";
+  stateEls.modalBody.innerHTML = `
+    <div class="form-grid modal-form-grid">
+      <label>
+        <span>姓名</span>
+        <input id="editFaceUserName" value="${escapeHtml(user.name || "")}" />
+      </label>
+      <label>
+        <span>身份 ID</span>
+        <input id="editFaceUserIdentity" value="${escapeHtml(user.identity || "")}" />
+      </label>
+    </div>
+    <div class="modal-actions">
+      <button data-modal-cancel>取消</button>
+      <button class="primary" id="confirmEditFaceUser">确认修改</button>
+    </div>
+  `;
+
+  qs("[data-modal-cancel]")?.addEventListener("click", closeModal);
+  qs("#confirmEditFaceUser")?.addEventListener("click", async () => {
+    try {
+      const nextName = qs("#editFaceUserName").value.trim();
+      const nextIdentity = qs("#editFaceUserIdentity").value.trim();
+      const data = await api(`/api/face/users/${userId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: nextName,
+          identity: nextIdentity,
+        }),
+      });
+      stateEls.faceFeedback.textContent = `已更新 ${data.user.identity}`;
+      closeModal();
+      await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
+    } catch (error) {
+      stateEls.faceFeedback.textContent = error.message;
+    }
+  });
+}
+
+function openFaceDeleteModal(userId) {
+  const user = faceUsersCache.find((item) => String(item.id) === String(userId));
+  if (!user) throw new Error("未找到认证人员");
+
+  stateEls.modal.classList.add("open");
+  stateEls.modal.setAttribute("aria-hidden", "false");
+  stateEls.modalEyebrow.textContent = "Access Database";
+  stateEls.modalTitle.textContent = "删除认证人员";
+  stateEls.modalBody.innerHTML = `
+    <div class="delete-warning">
+      <strong>${escapeHtml(user.identity || user.name || user.id)}</strong>
+      <p>确认删除该认证人员？这会同步删除数据库记录、注册照记录和本地 gallery 目录。</p>
+    </div>
+    <div class="modal-actions">
+      <button data-modal-cancel>取消</button>
+      <button class="primary danger-primary" id="confirmDeleteFaceUser">确认删除</button>
+    </div>
+  `;
+
+  qs("[data-modal-cancel]")?.addEventListener("click", closeModal);
+  qs("#confirmDeleteFaceUser")?.addEventListener("click", async () => {
+    try {
+      await api(`/api/face/users/${userId}`, { method: "DELETE" });
+      stateEls.faceFeedback.textContent = `已删除 ${user.identity || user.name || userId}`;
+      closeModal();
+      await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
+    } catch (error) {
+      stateEls.faceFeedback.textContent = error.message;
+    }
+  });
 }
 
 async function refreshFaceGallery() {
@@ -650,62 +777,63 @@ function bindModalActions(type) {
   });
 }
 
-async function runVision(kind) {
-  setVisionMode(kind);
-  const imagePath = stateEls.imagePath.value.trim();
-  const path = kind === "face" ? "/api/face/verify-latest" : "/api/yolo/detect";
-  const payload = {};
-  if (imagePath) payload.image_path = imagePath;
-  const data = await api(path, {
+function normalizeFaceResponse(data) {
+  return data.record || data.face_record || data.access_record || data;
+}
+
+async function verifyLatestFace() {
+  stateEls.faceFeedback.textContent = "正在进行门禁识别...";
+  pulseFeedback(stateEls.faceFeedback);
+  let data;
+  try {
+    data = await api("/api/face/verify-latest", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  } catch (error) {
+    const latestImagePath = latestYoloRecord?.image_path || latestYoloRecord?.result_image_path;
+    if (!latestImagePath) throw error;
+    data = await api("/api/face/verify", {
+      method: "POST",
+      body: JSON.stringify({ image_path: latestImagePath, trigger: "verify_latest_fallback" }),
+    });
+  }
+  const record = normalizeFaceResponse(data);
+  renderLatestFace(record);
+  await refreshFaceHistory();
+  await refreshStatus();
+}
+
+async function runYoloDetect() {
+  const imagePath = latestYoloRecord?.image_path || latestYoloRecord?.result_image_path;
+  if (!imagePath) throw new Error("暂无可用于 YOLO 识别的摄像头图片");
+  const data = await api("/api/yolo/detect", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ image_path: imagePath }),
   });
   stateEls.visionResult.textContent = JSON.stringify(data.record, null, 2);
-  if (kind !== "face") {
-    renderLatestYolo(data.record);
-  } else {
-    renderLatestFace(data.record);
-    await refreshStatus();
-  }
+  renderLatestYolo(data.record);
+  await refreshYoloHistory();
 }
 
 async function createFaceUser() {
   const name = stateEls.faceUserName.value.trim();
   const identity = stateEls.faceIdentity.value.trim();
-  const imagePath = stateEls.faceImagePath.value.trim();
-  const payload = {
-    name,
-    copy_to_gallery: stateEls.copyToGallery.checked,
-  };
-  if (identity) payload.identity = identity;
-  if (imagePath) payload.image_path = imagePath;
+  const imageFile = stateEls.faceImagePath.files?.[0];
+  const payload = new FormData();
+  payload.append("name", name);
+  payload.append("copy_to_gallery", stateEls.copyToGallery.checked ? "1" : "0");
+  if (identity) payload.append("identity", identity);
+  if (imageFile) payload.append("image", imageFile);
 
   const data = await api("/api/face/users", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: payload,
   });
   stateEls.faceFeedback.textContent = `已新增 ${data.user.identity}`;
   stateEls.faceUserName.value = "";
   stateEls.faceIdentity.value = "";
   stateEls.faceImagePath.value = "";
-  await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
-}
-
-async function addFaceImage() {
-  const userId = stateEls.faceUserSelect.value;
-  const imagePath = stateEls.extraFaceImagePath.value.trim();
-  if (!userId) throw new Error("请选择人员");
-  if (!imagePath) throw new Error("请输入注册照路径");
-
-  const data = await api(`/api/face/users/${userId}/images`, {
-    method: "POST",
-    body: JSON.stringify({
-      image_path: imagePath,
-      copy_to_gallery: stateEls.copyExtraToGallery.checked,
-    }),
-  });
-  stateEls.faceFeedback.textContent = `注册照已添加 #${data.image.id}`;
-  stateEls.extraFaceImagePath.value = "";
   await Promise.all([refreshFaceUsers(), refreshFaceGallery()]);
 }
 
@@ -736,21 +864,32 @@ function bindEvents() {
     renderHistoryCharts(lastHistoryRecords);
   }));
 
-  qs("#runYolo").addEventListener("click", () => runVision("yolo").catch((error) => {
-    stateEls.visionResult.textContent = error.message;
-  }));
-
-  qs("#runFace").addEventListener("click", () => runVision("face").catch((error) => {
-    stateEls.visionResult.textContent = error.message;
+  qs("#runFaceVerifyLatest").addEventListener("click", () => verifyLatestFace().catch((error) => {
+    stateEls.faceFeedback.textContent = error.message;
   }));
 
   qs("#createFaceUser").addEventListener("click", () => createFaceUser().catch((error) => {
     stateEls.faceFeedback.textContent = error.message;
   }));
 
-  qs("#addFaceImage").addEventListener("click", () => addFaceImage().catch((error) => {
-    stateEls.faceFeedback.textContent = error.message;
-  }));
+  stateEls.faceUsersTable.addEventListener("click", (event) => {
+    const editButton = event.target.closest("[data-edit-face-user]");
+    const deleteButton = event.target.closest("[data-delete-face-user]");
+    if (editButton) {
+      try {
+        openFaceEditModal(editButton.dataset.editFaceUser);
+      } catch (error) {
+        stateEls.faceFeedback.textContent = error.message;
+      }
+    }
+    if (deleteButton) {
+      try {
+        openFaceDeleteModal(deleteButton.dataset.deleteFaceUser);
+      } catch (error) {
+        stateEls.faceFeedback.textContent = error.message;
+      }
+    }
+  });
 }
 
 async function refreshAll() {
@@ -762,9 +901,10 @@ async function refreshAll() {
     refreshFaceUsers(),
     refreshFaceGallery(),
     refreshLatestYolo(),
+    refreshYoloHistory(),
     refreshLatestFace(),
+    refreshFaceHistory(),
   ]);
-  setVisionMode(currentVisionMode);
 }
 
 bindEvents();
@@ -777,5 +917,8 @@ setInterval(() => {
 setInterval(() => {
   refreshHistory();
   refreshEdgeNodes();
+  refreshLatestYolo();
+  refreshYoloHistory();
   refreshLatestFace();
+  refreshFaceHistory();
 }, 3000);
