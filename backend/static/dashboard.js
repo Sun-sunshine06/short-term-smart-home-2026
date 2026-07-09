@@ -16,16 +16,21 @@ const stateEls = {
   camera: qs("#cameraState"),
   history: qs("#historyTable"),
   historyHead: qs("#historyTableHead"),
+  yoloHistory: qs("#yoloHistoryTable"),
   profile: qs("#hardwareProfile"),
   feedback: qs("#controlFeedback"),
-  imagePath: qs("#imagePath"),
   visionResult: qs("#visionResult"),
-  visionResultTitle: qs("#visionResultTitle"),
   visionUpdatedAt: qs("#visionUpdatedAt"),
   latestCameraImage: qs("#latestCameraImage"),
   visionModel: qs("#visionModel"),
   visionConfidence: qs("#visionConfidence"),
   visionLabels: qs("#visionLabels"),
+  latestFaceImage: qs("#latestFaceImage"),
+  accessLockState: qs("#accessLockState"),
+  faceResultText: qs("#faceResultText"),
+  faceUserText: qs("#faceUserText"),
+  faceScoreText: qs("#faceScoreText"),
+  faceTimeText: qs("#faceTimeText"),
   faceUserName: qs("#faceUserName"),
   faceIdentity: qs("#faceIdentity"),
   faceImagePath: qs("#faceImagePath"),
@@ -35,6 +40,7 @@ const stateEls = {
   copyExtraToGallery: qs("#copyExtraToGallery"),
   faceFeedback: qs("#faceFeedback"),
   faceUsersTable: qs("#faceUsersTable"),
+  faceHistoryTable: qs("#faceHistoryTable"),
   galleryDir: qs("#galleryDir"),
   galleryImages: qs("#galleryImages"),
   edgeNodeCard: qs("#edgeNodeCard"),
@@ -67,7 +73,6 @@ const historyFields = [
 const previousStatus = {};
 const charts = {};
 let lastHistoryRecords = [];
-let currentVisionMode = "yolo";
 let latestYoloRecord = null;
 let latestFaceRecord = null;
 let localOverrides = {};
@@ -195,6 +200,7 @@ function applyStatusToUi(data) {
   animateTextChange(stateEls.light, lightText);
   animateTextChange(stateEls.fan, fanText);
   animateTextChange(stateEls.lock, lockText);
+  animateTextChange(stateEls.accessLockState, lockText);
   animateTextChange(stateEls.camera, cameraText);
   animateTextChange(stateEls.heroTemp, `温度 ${temperatureText}`);
   animateTextChange(stateEls.heroCamera, `摄像头 ${cameraText}`);
@@ -230,7 +236,7 @@ function renderLatestYolo(record) {
     stateEls.visionLabels.innerHTML = `<span class="label-chip">暂无</span>`;
     stateEls.latestCameraImage.removeAttribute("src");
     stateEls.latestCameraImage.parentElement.classList.remove("has-image");
-    if (currentVisionMode === "yolo") stateEls.visionResult.textContent = "等待 YOLO 识别结果";
+    stateEls.visionResult.textContent = "等待 YOLO 识别结果";
     return;
   }
 
@@ -245,12 +251,7 @@ function renderLatestYolo(record) {
   stateEls.visionLabels.innerHTML = labels
     .map((label) => `<span class="label-chip">${escapeHtml(label)}</span>`)
     .join("");
-  if (currentVisionMode === "yolo") {
-    stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
-  }
-  if (record.image_path) {
-    stateEls.imagePath.value = record.image_path;
-  }
+  stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
 
   if (imagePath) {
     stateEls.latestCameraImage.src = imageUrl(imagePath, record.id || record.created_at || Date.now());
@@ -266,13 +267,41 @@ async function refreshLatestYolo() {
   renderLatestYolo(data.record);
 }
 
+async function refreshYoloHistory() {
+  const data = await api("/api/yolo/history?limit=8").catch(() => ({ records: [] }));
+  const records = data.records || [];
+  if (!stateEls.yoloHistory) return;
+  if (!records.length) {
+    stateEls.yoloHistory.innerHTML = `<tr><td colspan="4">暂无检测记录</td></tr>`;
+    return;
+  }
+  stateEls.yoloHistory.innerHTML = "";
+  for (const record of records) {
+    const labels = Array.isArray(record.labels) && record.labels.length ? record.labels.join(" / ") : "未识别";
+    const confidence = Number(record.confidence);
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${shortTime(record.created_at)}</td>
+      <td>${escapeHtml(labels)}</td>
+      <td>${Number.isFinite(confidence) ? confidence.toFixed(2) : "--"}</td>
+      <td>${escapeHtml(record.model_name || "--")}</td>
+    `;
+    stateEls.yoloHistory.appendChild(row);
+  }
+}
+
 function renderLatestFace(record) {
   latestFaceRecord = record || null;
   if (!record) {
     stateEls.faceFeedback.textContent = "等待门禁识别";
     stateEls.accessResultCard?.classList.remove("granted", "denied");
     stateEls.accessResultCard.querySelector("strong").textContent = "等待识别";
-    if (currentVisionMode === "face") stateEls.visionResult.textContent = "等待人脸验证结果";
+    stateEls.faceResultText.textContent = "--";
+    stateEls.faceUserText.textContent = "--";
+    stateEls.faceScoreText.textContent = "--";
+    stateEls.faceTimeText.textContent = "--";
+    stateEls.latestFaceImage?.removeAttribute("src");
+    stateEls.latestFaceImage?.parentElement.classList.remove("has-image");
     return;
   }
 
@@ -286,8 +315,15 @@ function renderLatestFace(record) {
   stateEls.accessResultCard?.classList.toggle("granted", matched);
   stateEls.accessResultCard?.classList.toggle("denied", !matched);
   stateEls.accessResultCard.querySelector("strong").textContent = action;
-  if (currentVisionMode === "face") {
-    stateEls.visionResult.textContent = JSON.stringify(record, null, 2);
+  stateEls.faceResultText.textContent = matched ? "通过" : "拒绝";
+  stateEls.faceUserText.textContent = user;
+  stateEls.faceScoreText.textContent = Number.isFinite(score) ? score.toFixed(3) : "--";
+  stateEls.faceTimeText.textContent = shortTime(record.created_at);
+
+  const imagePath = record.image_path || latestYoloRecord?.image_path || latestYoloRecord?.result_image_path;
+  if (imagePath && stateEls.latestFaceImage) {
+    stateEls.latestFaceImage.src = imageUrl(imagePath, record.id || record.created_at || Date.now());
+    stateEls.latestFaceImage.parentElement.classList.add("has-image");
   }
 }
 
@@ -296,15 +332,26 @@ async function refreshLatestFace() {
   renderLatestFace(data.record);
 }
 
-function setVisionMode(mode) {
-  currentVisionMode = mode;
-  qsa(".vision-mode-button").forEach((button) => {
-    button.classList.toggle("active", button.dataset.visionMode === mode);
-    button.classList.toggle("primary", button.dataset.visionMode === mode);
-  });
-  stateEls.visionResultTitle.textContent = mode === "face" ? "人脸验证结果" : "YOLO 识别结果";
-  const record = mode === "face" ? latestFaceRecord : latestYoloRecord;
-  stateEls.visionResult.textContent = record ? JSON.stringify(record, null, 2) : (mode === "face" ? "等待人脸验证结果" : "等待 YOLO 识别结果");
+async function refreshFaceHistory() {
+  const data = await api("/api/face/history?limit=8").catch(() => ({ records: [] }));
+  const records = data.records || [];
+  if (!stateEls.faceHistoryTable) return;
+  if (!records.length) {
+    stateEls.faceHistoryTable.innerHTML = `<tr><td colspan="4">暂无门禁记录</td></tr>`;
+    return;
+  }
+  stateEls.faceHistoryTable.innerHTML = "";
+  for (const record of records) {
+    const score = Number(record.score);
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${shortTime(record.created_at)}</td>
+      <td>${record.matched ? "通过" : "拒绝"}</td>
+      <td>${escapeHtml(record.user_name || record.user_id || "未知人员")}</td>
+      <td>${Number.isFinite(score) ? score.toFixed(3) : "--"}</td>
+    `;
+    stateEls.faceHistoryTable.appendChild(row);
+  }
 }
 
 function ensureChart(id, config) {
@@ -650,21 +697,43 @@ function bindModalActions(type) {
   });
 }
 
-async function runVision(kind) {
-  setVisionMode(kind);
-  const imagePath = stateEls.imagePath.value.trim();
-  const path = kind === "face" ? "/api/face/verify" : "/api/yolo/detect";
-  const data = await api(path, {
+function normalizeFaceResponse(data) {
+  return data.record || data.face_record || data.access_record || data;
+}
+
+async function verifyLatestFace() {
+  stateEls.faceFeedback.textContent = "正在进行门禁识别...";
+  pulseFeedback(stateEls.faceFeedback);
+  let data;
+  try {
+    data = await api("/api/face/verify-latest", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  } catch (error) {
+    const latestImagePath = latestYoloRecord?.image_path || latestYoloRecord?.result_image_path;
+    if (!latestImagePath) throw error;
+    data = await api("/api/face/verify", {
+      method: "POST",
+      body: JSON.stringify({ image_path: latestImagePath, trigger: "verify_latest_fallback" }),
+    });
+  }
+  const record = normalizeFaceResponse(data);
+  renderLatestFace(record);
+  await refreshFaceHistory();
+  await refreshStatus();
+}
+
+async function runYoloDetect() {
+  const imagePath = latestYoloRecord?.image_path || latestYoloRecord?.result_image_path;
+  if (!imagePath) throw new Error("暂无可用于 YOLO 识别的摄像头图片");
+  const data = await api("/api/yolo/detect", {
     method: "POST",
     body: JSON.stringify({ image_path: imagePath }),
   });
   stateEls.visionResult.textContent = JSON.stringify(data.record, null, 2);
-  if (kind !== "face") {
-    renderLatestYolo(data.record);
-  } else {
-    renderLatestFace(data.record);
-    await refreshStatus();
-  }
+  renderLatestYolo(data.record);
+  await refreshYoloHistory();
 }
 
 async function createFaceUser() {
@@ -734,12 +803,8 @@ function bindEvents() {
     renderHistoryCharts(lastHistoryRecords);
   }));
 
-  qs("#runYolo").addEventListener("click", () => runVision("yolo").catch((error) => {
-    stateEls.visionResult.textContent = error.message;
-  }));
-
-  qs("#runFace").addEventListener("click", () => runVision("face").catch((error) => {
-    stateEls.visionResult.textContent = error.message;
+  qs("#runFaceVerifyLatest").addEventListener("click", () => verifyLatestFace().catch((error) => {
+    stateEls.faceFeedback.textContent = error.message;
   }));
 
   qs("#createFaceUser").addEventListener("click", () => createFaceUser().catch((error) => {
@@ -760,9 +825,10 @@ async function refreshAll() {
     refreshFaceUsers(),
     refreshFaceGallery(),
     refreshLatestYolo(),
+    refreshYoloHistory(),
     refreshLatestFace(),
+    refreshFaceHistory(),
   ]);
-  setVisionMode(currentVisionMode);
 }
 
 bindEvents();
@@ -772,5 +838,7 @@ setInterval(() => {
   refreshHistory();
   refreshEdgeNodes();
   refreshLatestYolo();
+  refreshYoloHistory();
   refreshLatestFace();
+  refreshFaceHistory();
 }, 3000);

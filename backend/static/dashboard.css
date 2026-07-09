@@ -672,6 +672,10 @@ select {
   margin-top: 16px;
 }
 
+.yolo-history-panel {
+  margin-top: 14px;
+}
+
 .result-box summary {
   margin-bottom: 10px;
   cursor: pointer;
@@ -739,6 +743,78 @@ pre {
 .access-result-card.denied {
   background: linear-gradient(135deg, #f07267, #c94546);
   color: #ffffff;
+}
+
+.access-control-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.access-lock-card {
+  min-height: 96px;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.access-lock-card strong {
+  display: block;
+  margin: 8px 0 4px;
+  font-size: 26px;
+}
+
+.access-lock-card p {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.access-verify-button {
+  min-height: 96px;
+  border-radius: 22px;
+  font-weight: 800;
+}
+
+.access-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.72fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.access-camera-preview,
+.access-camera-preview img {
+  min-height: 240px;
+}
+
+.access-result-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.access-result-list div {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.access-result-list dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.access-result-list dd {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
 }
 
 .form-grid {
@@ -1033,6 +1109,7 @@ tbody tr {
   }
 
   .vision-live,
+  .access-preview,
   .face-row,
   .system-grid {
     grid-template-columns: 1fr;
@@ -1142,6 +1219,7 @@ tbody tr {
 
   .control-grid,
   .chart-grid,
+  .access-control-grid,
   .form-grid,
   .form-actions,
   .brightness-control,

@@ -194,12 +194,12 @@
           <div class="section-heading">
             <div>
               <p class="eyebrow">Vision</p>
-              <h2>视觉识别</h2>
+              <h2>YOLO 视觉检测</h2>
             </div>
             <p id="visionUpdatedAt">等待摄像头画面</p>
           </div>
 
-          <section class="panel vision-panel" aria-label="视觉识别">
+          <section class="panel vision-panel" aria-label="YOLO 视觉检测">
             <div class="vision-live">
               <div class="camera-preview">
                 <img id="latestCameraImage" alt="最新摄像头画面" />
@@ -220,18 +220,30 @@
                 </div>
               </div>
             </div>
-            <label class="input-row">
-              <span>图片路径</span>
-              <input id="imagePath" value="uploads/example.jpg" />
-            </label>
-            <div class="split-actions">
-              <button class="primary vision-mode-button active" id="runYolo" data-vision-mode="yolo">YOLO 识别</button>
-              <button class="vision-mode-button" id="runFace" data-vision-mode="face">人脸验证</button>
-            </div>
             <details class="result-box" open>
-              <summary id="visionResultTitle">YOLO 识别结果</summary>
+              <summary>YOLO 识别结果</summary>
               <pre id="visionResult">等待识别结果</pre>
             </details>
+          </section>
+
+          <section class="panel yolo-history-panel" aria-label="YOLO 检测历史">
+            <div class="panel-heading">
+              <h2>检测历史</h2>
+              <p>最近 YOLO 记录。</p>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>标签</th>
+                    <th>置信度</th>
+                    <th>模型</th>
+                  </tr>
+                </thead>
+                <tbody id="yoloHistoryTable"></tbody>
+              </table>
+            </div>
           </section>
         </section>
 
@@ -250,6 +262,28 @@
                 <span>最新门禁</span>
                 <strong>等待识别</strong>
                 <p id="faceFeedback">等待操作</p>
+              </div>
+
+              <div class="access-control-grid">
+                <article class="access-lock-card">
+                  <span class="summary-label">当前门锁</span>
+                  <strong id="accessLockState">--</strong>
+                  <p>人脸验证通过后同步更新。</p>
+                </article>
+                <button class="primary access-verify-button" id="runFaceVerifyLatest">人脸验证 / 门禁识别</button>
+              </div>
+
+              <div class="access-preview">
+                <div class="camera-preview access-camera-preview">
+                  <img id="latestFaceImage" alt="最新门禁验证图片" />
+                  <div class="empty-state">暂无验证图片</div>
+                </div>
+                <div class="access-result-list">
+                  <div><dt>结果</dt><dd id="faceResultText">--</dd></div>
+                  <div><dt>人员</dt><dd id="faceUserText">--</dd></div>
+                  <div><dt>分数</dt><dd id="faceScoreText">--</dd></div>
+                  <div><dt>时间</dt><dd id="faceTimeText">--</dd></div>
+                </div>
               </div>
 
               <div class="form-grid">
@@ -315,6 +349,26 @@
               </div>
               <div class="gallery-strip" id="galleryImages"></div>
             </section>
+          </section>
+
+          <section class="panel face-history-panel" aria-label="门禁识别历史">
+            <div class="panel-heading">
+              <h2>门禁识别历史</h2>
+              <p>最近点击式人脸验证记录。</p>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>时间</th>
+                    <th>结果</th>
+                    <th>人员</th>
+                    <th>分数</th>
+                  </tr>
+                </thead>
+                <tbody id="faceHistoryTable"></tbody>
+              </table>
+            </div>
           </section>
         </section>
 
