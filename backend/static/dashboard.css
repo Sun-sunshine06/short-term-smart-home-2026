@@ -753,7 +753,7 @@ pre {
 
 .access-control-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.78fr) 190px;
+  grid-template-columns: minmax(0, 1fr) 190px;
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -775,26 +775,6 @@ pre {
 .access-lock-card p {
   color: var(--muted);
   font-size: 13px;
-}
-
-.access-upload-field {
-  display: grid;
-  align-content: center;
-  gap: 9px;
-  min-height: 96px;
-  padding: 15px;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.access-upload-field input {
-  width: 100%;
-  min-width: 0;
-  color: var(--text);
-  font-size: 12px;
 }
 
 .access-verify-button {
