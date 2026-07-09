@@ -31,6 +31,7 @@ const stateEls = {
   faceUserText: qs("#faceUserText"),
   faceScoreText: qs("#faceScoreText"),
   faceTimeText: qs("#faceTimeText"),
+  faceVerifyImage: qs("#faceVerifyImage"),
   faceUserName: qs("#faceUserName"),
   faceIdentity: qs("#faceIdentity"),
   faceImagePath: qs("#faceImagePath"),
@@ -322,7 +323,7 @@ function renderLatestFace(record) {
   stateEls.faceScoreText.textContent = Number.isFinite(score) ? score.toFixed(3) : "--";
   stateEls.faceTimeText.textContent = shortTime(record.created_at);
 
-  const imagePath = record.image_path || latestYoloRecord?.image_path || latestYoloRecord?.result_image_path;
+  const imagePath = record.image_path;
   if (imagePath && stateEls.latestFaceImage) {
     stateEls.latestFaceImage.src = imageUrl(imagePath, record.id || record.created_at || Date.now());
     stateEls.latestFaceImage.parentElement.classList.add("has-image");
@@ -784,20 +785,23 @@ function normalizeFaceResponse(data) {
 async function verifyLatestFace() {
   stateEls.faceFeedback.textContent = "正在进行门禁识别...";
   pulseFeedback(stateEls.faceFeedback);
-  let data;
-  try {
-    data = await api("/api/face/verify-latest", {
+
+  const imageFile = stateEls.faceVerifyImage?.files?.[0];
+  const data = imageFile
+    ? await api("/api/face/verify", {
+      method: "POST",
+      body: (() => {
+        const payload = new FormData();
+        payload.append("image", imageFile);
+        payload.append("trigger", "direct_face_upload");
+        return payload;
+      })(),
+    })
+    : await api("/api/face/verify-latest", {
       method: "POST",
       body: JSON.stringify({}),
     });
-  } catch (error) {
-    const latestImagePath = latestYoloRecord?.image_path || latestYoloRecord?.result_image_path;
-    if (!latestImagePath) throw error;
-    data = await api("/api/face/verify", {
-      method: "POST",
-      body: JSON.stringify({ image_path: latestImagePath, trigger: "verify_latest_fallback" }),
-    });
-  }
+
   const record = normalizeFaceResponse(data);
   renderLatestFace(record);
   await refreshFaceHistory();

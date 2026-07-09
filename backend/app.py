@@ -29,6 +29,7 @@ DATA_DIR = BASE_DIR / "data"
 DEFAULT_DB_PATH = DATA_DIR / "smart_home.db"
 DEFAULT_CAMERA_UPLOAD_DIR = DATA_DIR / "uploads" / "camera"
 DEFAULT_FACE_UPLOAD_DIR = DATA_DIR / "uploads" / "face_enroll"
+DEFAULT_FACE_VERIFY_UPLOAD_DIR = DATA_DIR / "uploads" / "face_verify"
 DEFAULT_FACE_GALLERY_DIR = BASE_DIR.parent / "training" / "face_gallery"
 
 
@@ -63,6 +64,10 @@ def get_camera_upload_dir() -> Path:
 
 def get_face_upload_dir() -> Path:
     return Path(os.environ.get("FACE_UPLOAD_DIR", DEFAULT_FACE_UPLOAD_DIR))
+
+
+def get_face_verify_upload_dir() -> Path:
+    return Path(os.environ.get("FACE_VERIFY_UPLOAD_DIR", DEFAULT_FACE_VERIFY_UPLOAD_DIR))
 
 
 def get_face_gallery_dir() -> Path:
@@ -458,14 +463,14 @@ def face_upload_filename(original_name: str | None) -> str:
     return f"{stamp}_{uuid.uuid4().hex[:8]}_{stem}{suffix}"
 
 
-def save_face_upload_file() -> str | None:
+def save_face_upload_file(upload_dir: Path | None = None) -> str | None:
     image_file = request.files.get("image") or request.files.get("face_image")
     if image_file is None or not image_file.filename:
         return None
     suffix = Path(image_file.filename).suffix.lower()
     if suffix not in ALLOWED_IMAGE_SUFFIXES:
         raise ValueError("unsupported image file type")
-    upload_dir = get_face_upload_dir()
+    upload_dir = upload_dir or get_face_upload_dir()
     upload_dir.mkdir(parents=True, exist_ok=True)
     target = upload_dir / face_upload_filename(image_file.filename)
     image_file.save(target)
@@ -1368,13 +1373,30 @@ def create_app() -> Flask:
     @app.post("/api/face/access")
     @app.post("/api/face/verify")
     def face_access():
-        payload = request.get_json(silent=True) or {}
+        if request.files:
+            payload = request.form.to_dict()
+            try:
+                uploaded_image_path = save_face_upload_file(get_face_verify_upload_dir())
+            except ValueError as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 400
+            if uploaded_image_path:
+                payload["image_path"] = uploaded_image_path
+                payload["trigger"] = payload.get("trigger") or "direct_face_upload"
+        else:
+            payload = request.get_json(silent=True) or {}
         try:
             row = create_face_record(payload)
             status_row = sync_lock_state_from_face(row)
         except Exception as exc:
             return jsonify({"ok": False, "error": str(exc)}), 500
-        return jsonify({"ok": True, "record": row_to_dict(row), "status": row_to_dict(status_row)})
+        return jsonify(
+            {
+                "ok": True,
+                "image_path": payload.get("image_path"),
+                "record": row_to_dict(row),
+                "status": row_to_dict(status_row),
+            }
+        )
 
     @app.post("/api/face/verify-latest")
     def face_verify_latest():
@@ -1394,7 +1416,6 @@ def create_app() -> Flask:
                     "image_path": image_path,
                     "trigger": payload.get("trigger") or "manual_verify_latest",
                     "source_detection_id": source_record["id"],
-                    "source_yolo_record_id": source_record["id"],
                 }
             )
             status_row = sync_lock_state_from_face(row)
@@ -1405,8 +1426,7 @@ def create_app() -> Flask:
                 "ok": True,
                 "image_path": image_path,
                 "record": row_to_dict(row),
-                "yolo_record": row_to_dict(source_record),
-                "source_yolo_record": row_to_dict(source_record),
+                "source_frame": row_to_dict(source_record),
                 "status": row_to_dict(status_row),
             }
         )
