@@ -71,6 +71,14 @@ YOLO 和人脸识别先运行在后端电脑上。Orange Pi 负责采集、上�
 docs/notes/orange-pi-camera-demo-2026-07-08.md
 ```
 
+2026-07-09 已记录一次真实 Orange Pi AIpro 昇腾环境检查和网线直连配置结果。该次检查确认开发板 NPU 为 `310B4`，CANN/ATC/ACLLite 路径存在，官方 YOLOv5 Jupyter 示例目录存在，并已配置有线直连：
+
+```text
+后端电脑以太网：192.168.1.100/24
+Orange Pi eth0：192.168.1.101/24
+docs/notes/orange-pi-aipro-env-check-2026-07-09.md
+```
+
 当前传感器字段仍可先用脚本模拟：
 
 - `temperature`
@@ -221,6 +229,27 @@ curl http://<BACKEND_HOST>:<BACKEND_PORT>/api/health
 ```
 
 返回中看到 `"ok": true` 即表示 Orange Pi 可以访问后端。
+
+### 4. 已验证网线直连备用地址
+
+如果现场 Wi-Fi 或手机热点不稳定，可使用 2026-07-09 已验证的网线直连通道：
+
+```text
+后端电脑以太网 IPv4：192.168.1.100
+Orange Pi eth0 IPv4：192.168.1.101
+```
+
+Orange Pi 访问后端：
+
+```bash
+curl http://192.168.1.100:5000/api/health
+```
+
+电脑访问 Orange Pi：
+
+```powershell
+ssh -i .\local\ssh\orangepi_codex_ed25519 HwHiAiUser@192.168.1.101
+```
 
 ## 部署或更新 Orange Pi 边缘脚本
 
