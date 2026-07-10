@@ -85,7 +85,7 @@ POST /api/yolo/detect
 GET  /api/yolo/latest
 GET  /api/yolo/history
 POST /api/face/access
-POST /api/face/verify      # JSON image_path or multipart image upload
+POST /api/face/verify
 POST /api/face/verify-latest
 GET  /api/face/latest
 GET  /api/face/history
@@ -100,7 +100,7 @@ GET  /api/face/gallery
 
 The backend auto-migrates small SQLite schema changes at startup. Current runtime tables include indexes for command polling, heartbeat history, sensor history, YOLO history, face-access history, authorized users, and face-gallery lookup.
 
-YOLO records now store `source`, `node_id`, and `inference_ms`. Face access logs store `source_detection_id` when verification is triggered from the latest camera frame, but the face API response exposes this as a generic source frame so the door-access workflow does not look like a YOLO action.
+YOLO records now store `source`, `node_id`, and `inference_ms`. Face access logs store `source_detection_id` when verification is triggered from the latest camera frame, so the backend can trace which YOLO frame was used for a door-access decision.
 
 Camera demos can create many uploaded frames and annotated YOLO result images. Use the cleanup script in dry-run mode first:
 
@@ -195,21 +195,13 @@ Enable automatic face verification for camera uploads only for a special demo or
 $env:CAMERA_UPLOAD_FACE_VERIFY="1"
 ```
 
-For normal door-access verification, the frontend can directly upload the original face photo:
-
-```text
-POST /api/face/verify
-Content-Type: multipart/form-data
-image=<face image file>
-```
-
-If a live camera frame is already being uploaded by the edge client, the frontend may call the latest-frame endpoint when the user clicks the face-recognition button:
+For normal door-access verification, let the frontend call the latest-frame endpoint when the user clicks the face-recognition button:
 
 ```text
 POST /api/face/verify-latest
 ```
 
-This endpoint reads the latest saved camera-frame `image_path`, runs InsightFace against that original frame, writes an access log, and updates `lock_open`. It does not call YOLO again.
+This endpoint reads the latest `detection_records.image_path`, runs InsightFace against that original camera frame, writes an access log, and updates `lock_open`.
 
 If the image already exists on the backend computer, call YOLO directly:
 
