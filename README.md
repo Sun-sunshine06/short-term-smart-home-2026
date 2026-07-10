@@ -59,6 +59,7 @@ local/                   本地材料，默认不提交 Git
 ## 视觉模型权重
 
 - YOLO 推理权重已提交到仓库：`training/models/object_fire400_drone2800_yolo26s_v1_best.pt`。
+- 2026-07-10 新增 YOLO v2 清洗后重训权重：`training/models/object_fire400_drone2630_yolo26s_v2_face_removed_pretrained_best.pt`。该权重使用官方 `yolo26s.pt` 基模训练，并保留 v1 权重以兼容现有调用。
 - InsightFace `buffalo_l` ONNX 权重体积较大，放在 GitHub Release：`vision-models-v1`。
 - 下载地址：`https://github.com/Sun-sunshine06/short-term-smart-home-2026/releases/download/vision-models-v1/buffalo_l.zip`。
 - 离线运行人脸识别时，将 `buffalo_l.zip` 解压到 `<USER_HOME>/.insightface/models/buffalo_l/`。

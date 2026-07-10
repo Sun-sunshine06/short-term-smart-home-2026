@@ -10,6 +10,7 @@
 当前状态：
 
 - 已训练好的 YOLO 模型：`models/object_fire400_drone2800_yolo26s_v1_best.pt`
+- 新增 YOLO v2 权重：`models/object_fire400_drone2630_yolo26s_v2_face_removed_pretrained_best.pt`。该权重由官方 `yolo26s.pt` 基模在清洗后的 3,030 张训练图上训练得到。
 - InsightFace `buffalo_l` 模型包已上传到 GitHub Release：`vision-models-v1`。
 - YOLO 只负责物体检测，不做人脸检测或人脸识别。
 - 人脸识别和门禁判断使用 InsightFace。
@@ -25,6 +26,7 @@
 ## 1. 文件说明
 
 - `models/object_fire400_drone2800_yolo26s_v1_best.pt`：当前交付的 YOLO 权重。
+- `models/object_fire400_drone2630_yolo26s_v2_face_removed_pretrained_best.pt`：新增的清洗后重训权重；SHA-256 为 `1E1F4F45A5D2C63DEA4E201B05CDEF577BFE14CD6709EAE84A4D40A6CFC3BB1F`。
 - `data/object_fire400_drone2800/data.yaml`：当前物体检测数据集配置；数据集未提交到仓库，复训时需要自行放回。
 - `train_joint.py`：后续需要复训时使用的 YOLO 训练脚本。
 - `val_joint.py`：验证当前或后续训练权重的脚本。
@@ -53,6 +55,7 @@ data/
 
 ```text
 YOLO:        training/models/object_fire400_drone2800_yolo26s_v1_best.pt
+YOLO v2:     training/models/object_fire400_drone2630_yolo26s_v2_face_removed_pretrained_best.pt
 InsightFace: https://github.com/Sun-sunshine06/short-term-smart-home-2026/releases/download/vision-models-v1/buffalo_l.zip
 ```
 
