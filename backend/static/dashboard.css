@@ -1155,6 +1155,18 @@ tbody tr {
   color: rgba(255, 255, 255, 0.82);
 }
 
+.option-card:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.modal-note {
+  margin: 14px 2px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .modal-slider {
   display: grid;
   grid-template-columns: 1fr 48px;
@@ -1329,3 +1341,15 @@ tbody tr {
     grid-template-columns: 86px minmax(0, 1fr);
   }
 }
+.sidecar-panel {
+  margin: 20px auto 100px;
+  padding: 20px;
+  max-width: 1100px;
+  border: 1px solid #dce5e2;
+  border-radius: 16px;
+  background: #fff;
+  color: #263c35;
+  overflow-wrap: anywhere;
+}
+.sidecar-panel h2 { font-size: 18px; }
+.sidecar-panel p { font-size: 14px; line-height: 1.7; }

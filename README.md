@@ -1,10 +1,12 @@
 # Short Term Smart Home 2026
 
-硬件组参考源码：[两块 Arduino 工程与使用说明](hardware/arduino/README.md)。尚未确认与板上固件一致，信息采集阶段不要直接烧录。
+当前硬件源码：[双 UNO USB_ASR_D3_V1 与使用说明](hardware/arduino/README.md)。用户转述现场已完成 ASR 改 D3、两板烧录，灯和风扇响应正常；独立实物验收仍需记录。
 
-> **2026-11-17 最新分工：** 电脑负责硬件 USB 接入、业务和视频；香橙派通过网络接收数据副本，承担旁路边缘分析，不影响主流程。保留现有模块接线，允许按核查结果改固件。详见 [最新实施计划](docs/proposals/pc-main-orange-pi-sidecar-2026-11-17.md)。本次仅确认计划，尚未实现。
+> **2026-11-17 最新分工：** 电脑负责新板 USB 接入、业务和视频；香橙派通过网络接收副本，承担旁路分析。已实现异步转发、质量检查、规则、本地记录与页面状态；运行方法和验证边界见 [旁路运行说明](edge/SIDECAR.md)。硬件更新以 USB_ASR_D3_V1 为准，新板 ASR 改 D3。电脑视频与正式控制不依赖旁路结果。
 
 2026 国际学院小学期智能家居项目小组协作仓库。
+
+迁移到同学电脑、配置交接和后续软件分工见 [迁移说明](docs/MIGRATION.md)。负责人可专注规划与前端，真实 USB 和摄像头由同学现场接入。
 
 ## 项目定位
 
@@ -24,6 +26,8 @@ backend/
   scripts/
     simulate_orange_pi.py Orange Pi AIpro 模拟上报脚本
 edge/
+  sidecar_service.py     当前香橙派旁路接收、分析与本地记录服务
+  SIDECAR.md             当前部署、协议与故障验证说明
   orange_pi_client.py     香橙派端 HTTP 上报与命令轮询脚本
 training/                 YOLO 物体检测与 InsightFace 人脸门禁代码、权重和验收样例
 docs/

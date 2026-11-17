@@ -1,5 +1,7 @@
 # Orange Pi Edge Client
 
+> Current architecture (2026-11-17): use [SIDECAR.md](SIDECAR.md) and `sidecar_service.py` for the passive analysis node. The client described below is the legacy upload/command-polling flow; do not launch it alongside the new sidecar workflow. Arduino USB remains attached to the PC.
+
 This directory contains the Orange Pi AIpro edge-side client.
 
 The client uses only Python standard library modules, so it can run on openEuler, Ubuntu, or similar Linux systems without installing extra packages.

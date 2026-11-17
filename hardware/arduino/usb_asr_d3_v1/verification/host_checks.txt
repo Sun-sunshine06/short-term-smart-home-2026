@@ -1,0 +1,5 @@
+PASS protocol: 1..15, sequences, repeats, timer wrap, every startup cut, every dropped edge, 32 corrupt bits, jitter, legacy rejection, stuck line
+PASS D3 RX: all 256 bytes, timer wrap, stop error, overflow flush, late sample, false start
+PASS linked action while wrong-password sound active; simulated first-copy latency 343 ms
+PASS firmware: all keys incl. D12 row, PIN/auto-close, ASR 1..6, AUTO keys/tokens, fan hysteresis, rain/soil forwarding, touch bell only, serial overflow, echo timeout, stale states, millis wrap
+PASS USB/ASR: PING, lights/fan/auto, source isolation, required delimiter, timeout, framing-error recovery, face cooldown, queue full, honest TX status

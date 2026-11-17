@@ -1,0 +1,8 @@
+{
+  "uno-soil-rain": {
+    "required": ["soil_raw", "soil_percent", "soil_state", "rain_raw", "rain_percent", "rain_state"],
+    "timeout_seconds": 15,
+    "dry_seconds": 60,
+    "ranges": {"soil_raw": [0, 1023], "rain_raw": [0, 1023]}
+  }
+}

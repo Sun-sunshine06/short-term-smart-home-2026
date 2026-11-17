@@ -9,8 +9,14 @@ This version does not require real hardware. It seeds a generic Ascend-based Ora
 ```powershell
 cd <PROJECT_ROOT>\backend
 python -m pip install -r requirements.txt
+$env:UNO_PORT="COM9"
+$env:UNO_BAUD="115200"
 python app.py
 ```
+
+The PC backend opens only `UNO_PORT`; it does not scan or open the old board on COM10. Close Arduino Serial Monitor and other serial tools before starting Flask. The new board should answer `PING` with `PONG,USB_ASR_D3_V1` before the dashboard light controls become available.
+
+USB delivery does not confirm execution on the old board. `/api/status` keeps reported device fields unchanged and exposes command estimates separately in `expected_states` with `confirmed: false`. The dashboard labels these estimates as unconfirmed. Door estimates expire four seconds after delivery, calculated from the persisted command timestamp, including after page refresh or backend restart. This is an estimate, not a physical door sensor reading. A queued command alone does not create an estimate or mark hardware online.
 
 Optional vision dependencies:
 
