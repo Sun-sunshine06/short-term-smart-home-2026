@@ -4,7 +4,7 @@
 
 ## 链路与边界
 
-`新板 USB → 电脑 collect_uno.py → Flask 入库 → 有界后台队列 → 香橙派 HTTP / SQLite / 分析`
+`新板 USB → 后端 UnoSerialBridge → 有界遥测队列 → Flask 入库 → 有界旁路队列 → 香橙派 HTTP / SQLite / 分析`
 
 电脑提交原有业务事务后再尝试入队；采集、浏览器请求均不等待香橙派网络。队列最多 64 个设备，每个设备合并为最新一条；满时淘汰最旧项并计数。另保留最多 64 个设备的最新快照用于重连恢复。每个 HTTP 请求超时 1 秒；失败样本结束本次发送，后台连接检查按 2/4/8 秒退避。重连后最多重发一次各设备 180 秒内的最新快照，并处理后续新数据；每条快照的恢复重发次数有上限，不反复补发历史。副本是尽力交付，不能保证零丢失。旁路服务不访问控制接口，不触发开门。电脑停止发送时，香橙派只能检测中断并保存已有记录。
 
@@ -53,16 +53,17 @@ python3 sidecar_service.py --host 192.168.137.100 --port 8787 --config sidecar.j
 # 电脑，仓库根目录
 $env:SIDECAR_URL = 'http://192.168.137.100:8787'
 $env:SIDECAR_TOKEN = '<双方相同的随机密钥>'
+$env:UNO_PORT = 'COM9' # 替换为实际新板端口；先关闭旧采集进程和串口监视器
+$env:UNO_DEVICE_ID = 'uno-soil-rain'
 uv run --with-requirements backend/requirements.txt python backend/app.py
 ```
 
 ```powershell
-# 另一个终端。先关闭占用新板串口的串口监视器；打开串口可能重启新板。
-# 将 COM9 换成确认过的新扩展板端口。仅读取，不发送任何控制命令。
-uv run --with-requirements backend/requirements-hardware.txt python backend/scripts/collect_uno.py --port COM9 --device-id uno-soil-rain
+# 可选：另一个终端只监视后端状态，不打开串口、不重复采集。
+uv run python backend/scripts/collect_uno.py --once
 ```
 
-采集器独立读取线程外发送 HTTP，队列只保留最新一条；后端不通时也不会无限堆积。每 5 秒打印解析、合并、发送和失败计数。串口断开会退出，需要重新确认端口后启动。
+后端单进程独占串口，控制响应与遥测共享读取线程。遥测后台队列只保留最新一条，在独立线程入库并提交旁路队列，慢存储或网络不会阻塞串口读取。端口断开自动重连，不重放控制命令。状态接口提供接收、合并、入库及错误计数；设备 ID 由后端 UNO_DEVICE_ID 配置。
 
 本次用户提供的历史启动流程使用香橙派 `192.168.137.100`、电脑有线 `192.168.137.101/24`、用户 `HwHiAiUser`。地址配置是本机联调信息，不是通用硬编码默认值。Windows ActiveStore 配置重启后可能失效；不设置有线默认网关。旧文档的 `192.168.1.101` 不应盲用。不要启动旧的 `orange_pi_client.py --camera` 流程。
 

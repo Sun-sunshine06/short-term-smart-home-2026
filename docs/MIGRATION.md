@@ -11,8 +11,8 @@
 | 配置 | 所在位置 | 说明 |
 | --- | --- | --- |
 | 香橙派地址与共享密钥 | `local/sidecar.env` | 从 `edge/pc.env.example` 复制；密钥必须与板端一致，通过私下方式交接，不提交 Git |
-| 新板 USB 端口 | 采集命令 `--port` | 使用同学电脑实际 COM 号，不能沿用其他电脑编号 |
-| 稳定设备身份 | 采集命令 `--device-id` | 当前配置为 `uno-soil-rain`；换 COM 号不改设备身份 |
+| 新板 USB 端口 | `local/sidecar.env` 的 `UNO_PORT` | 使用同学电脑实际 COM 号，不能沿用其他电脑编号 |
+| 稳定设备身份 | `local/sidecar.env` 的 `UNO_DEVICE_ID` | 当前配置为 `uno-soil-rain`；换 COM 号不改设备身份 |
 | 网络 | 同学电脑有线网口 | 当前板端是 192.168.137.100；确认实际网络后配置同网段地址，不自动改默认网关 |
 | 视觉模型与图库 | 既有视觉配置 | 单独迁移模型与经授权的图库，旁路部署不等于视觉环境已就绪 |
 
@@ -30,7 +30,7 @@
 
    检查只读取节点状态，不打开串口、不发送样本、不控制设备。失败不妨碍本地前端开发。
 
-4. 启动后端：
+4. 停止旧 collect_uno 进程及串口监视器，配置实际 UNO_PORT 后启动单个后端进程（打开端口可能使新板复位）：
 
    ```powershell
    .\backend\scripts\start_backend.ps1
@@ -39,13 +39,13 @@
    脚本相对自身定位项目目录并使用 uv 管理依赖，自动读取本地旁路配置。若终端限制运行 PowerShell 脚本，可在该终端手动设置两个 `SIDECAR_` 环境变量，再运行 `uv run --with-requirements backend/requirements.txt python backend/app.py`；无需修改全局执行策略。
 
 5. 打开 `http://127.0.0.1:5000/`，确认后端在线、旁路状态准确。首次启动的设备卡片含原型初始值，不是现场测量证据；真实采集接入前不要当作有效读数展示。
-6. 关闭占用串口的监视器，确认新扩展板端口后启动仅读取的采集程序（打开串口可能使新板复位）：
+6. 后端已统一读取新板数据，可选运行状态监视器，它不会再打开串口：
 
    ```powershell
-   uv run --with-requirements backend/requirements-hardware.txt python backend/scripts/collect_uno.py --port COM9 --device-id uno-soil-rain
+   uv run python backend/scripts/collect_uno.py --once
    ```
 
-   将 COM9 替换为实际端口。新板使用 115200；旧板 D0/D1 仍接键盘，不把旧板当成遥测 USB 接口。
+   新板使用 115200；旧板 D0/D1 仍接键盘，不把旧板当成遥测 USB 接口。无硬件开发时配置 UNO_SERIAL_ENABLED=0。
 
 7. 接入真实雨滴/土壤后，确认来源、最近接收时间、状态变化；停止香橙派服务或拔其网线，验证电脑采集与页面继续运行，恢复后再次确认新数据。视频与硬件控制链路各自单独验收。
 

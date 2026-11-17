@@ -9,6 +9,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+try:
+    from uno_telemetry import parse_telemetry
+except ImportError:
+    from backend.uno_telemetry import parse_telemetry
+
 
 COMMAND_IDS = {
     "DO": 1,
@@ -106,6 +111,43 @@ class UnoSerialBridge:
         self._last_seen_at: str | None = None
         self._line_sequence = 0
         self._lines: deque[tuple[int, str]] = deque(maxlen=200)
+        self._telemetry_handler = None
+        self._telemetry_thread = None
+        self._pending_telemetry = deque(maxlen=1)
+        self._telemetry_received = self._telemetry_delivered = 0
+        self._telemetry_dropped = self._telemetry_errors = 0
+        self._telemetry_error = None
+        self.device_id = os.environ.get("UNO_DEVICE_ID", "uno-soil-rain")
+        if not 1 <= len(self.device_id) <= 80:
+            raise ValueError("UNO_DEVICE_ID must contain 1..80 characters")
+
+    def set_telemetry_handler(self, handler) -> None:
+        with self._condition:
+            self._telemetry_handler = handler
+
+    def _deliver_telemetry(self) -> None:
+        while not self._stop_event.is_set():
+            with self._condition:
+                self._condition.wait_for(
+                    lambda: self._stop_event.is_set() or bool(self._pending_telemetry), timeout=0.2
+                )
+                if self._stop_event.is_set():
+                    return
+                if not self._pending_telemetry:
+                    continue
+                payload, received_at = self._pending_telemetry.popleft()
+                handler = self._telemetry_handler
+            try:
+                if handler is None:
+                    raise RuntimeError("Telemetry handler is not configured")
+                handler(payload, received_at)
+                with self._condition:
+                    self._telemetry_delivered += 1
+                    self._telemetry_error = None
+            except Exception as exc:
+                with self._condition:
+                    self._telemetry_errors += 1
+                    self._telemetry_error = str(exc)
 
     def start(self) -> None:
         if not self.enabled:
@@ -114,6 +156,11 @@ class UnoSerialBridge:
             if self._thread and self._thread.is_alive():
                 return
             self._stop_event.clear()
+            if not self._telemetry_thread or not self._telemetry_thread.is_alive():
+                self._telemetry_thread = threading.Thread(
+                    target=self._deliver_telemetry, name="uno-telemetry", daemon=True
+                )
+                self._telemetry_thread.start()
             self._thread = threading.Thread(target=self._run, name="uno-serial-bridge", daemon=True)
             self._thread.start()
 
@@ -122,6 +169,7 @@ class UnoSerialBridge:
         serial_connection = None
         with self._state_lock:
             serial_connection = self._serial
+            self._condition.notify_all()
         if serial_connection is not None:
             try:
                 serial_connection.close()
@@ -130,6 +178,9 @@ class UnoSerialBridge:
         thread = self._thread
         if thread and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout=2)
+        worker = self._telemetry_thread
+        if worker and worker.is_alive() and worker is not threading.current_thread():
+            worker.join(timeout=2)
 
     def snapshot(self) -> dict[str, Any]:
         with self._state_lock:
@@ -143,6 +194,15 @@ class UnoSerialBridge:
                 "last_error": self._last_error,
                 "last_line": self._last_line,
                 "last_seen_at": self._last_seen_at,
+                "telemetry": {
+                    "device_id": self.device_id,
+                    "pending": len(self._pending_telemetry),
+                    "received": self._telemetry_received,
+                    "delivered": self._telemetry_delivered,
+                    "dropped": self._telemetry_dropped,
+                    "errors": self._telemetry_errors,
+                    "last_error": self._telemetry_error,
+                },
             }
 
     def send_command(self, command: str, timeout: float = 5.0) -> UnoCommandResult:
@@ -226,13 +286,21 @@ class UnoSerialBridge:
                 connection.reset_input_buffer()
                 self._write(b"PING\n")
                 next_ping_at = time.monotonic() + 2.0
+                buffer = bytearray()
+                discarding = False
 
                 while not self._stop_event.is_set() and connection.is_open:
-                    raw = connection.readline()
-                    if raw:
-                        line = raw.decode("utf-8", errors="replace").strip()
-                        if line:
-                            self._record_line(line)
+                    for byte in connection.read(256):
+                        if byte == 10:
+                            if buffer and not discarding:
+                                self._record_line(buffer.decode("utf-8", errors="replace").strip())
+                            buffer.clear()
+                            discarding = False
+                        elif not discarding:
+                            buffer.append(byte)
+                            if len(buffer) > 512:
+                                buffer.clear()
+                                discarding = True
                     if not self.snapshot()["ready"] and time.monotonic() >= next_ping_at:
                         self._write(b"PING\n")
                         next_ping_at = time.monotonic() + 2.0
@@ -262,7 +330,13 @@ class UnoSerialBridge:
             connection.flush()
 
     def _record_line(self, line: str) -> None:
+        payload = parse_telemetry(line)
         with self._condition:
+            if payload is not None:
+                payload["device_id"] = self.device_id
+                self._telemetry_received += 1
+                self._telemetry_dropped += int(bool(self._pending_telemetry))
+                self._pending_telemetry.append((payload, datetime.now(timezone.utc).isoformat()))
             self._line_sequence += 1
             self._lines.append((self._line_sequence, line))
             self._last_line = line

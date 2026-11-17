@@ -9,6 +9,7 @@ import shutil
 import sqlite3
 import time
 import uuid
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -726,7 +727,6 @@ def create_app(uno_bridge_override: Any | None = None) -> Flask:
         # Snapshot only: never wait for the edge node on a browser request.
         return jsonify(sidecar.snapshot())
     uno_bridge = uno_bridge_override or get_uno_bridge()
-    uno_bridge.start()
     app.extensions["uno_serial"] = uno_bridge
 
     @app.get("/")
@@ -820,18 +820,20 @@ def create_app(uno_bridge_override: Any | None = None) -> Flask:
     @app.post("/api/sensor/update")
     def sensor_update():
         payload = request.get_json(silent=True) or {}
+        return jsonify({"ok": True, "status": ingest_sensor(payload, datetime.now(timezone.utc).isoformat())})
+
+    def ingest_sensor(payload, pc_received_at):
         now = utc_now()
-        pc_received_at = datetime.now(timezone.utc).isoformat()
 
         temperature = payload.get("temperature")
-        light_level = parse_int(payload.get("light_level"), 0)
+        light_level = parse_int(payload.get("light_level"), None)
         door_open = parse_bool(payload.get("door_open"))
         window_open = parse_bool(payload.get("window_open"))
         fan_on = parse_bool(payload.get("fan_on"))
         lock_open = parse_bool(payload.get("lock_open"))
         camera_online = parse_bool(payload.get("camera_online"))
 
-        with connect_db() as conn:
+        with closing(connect_db()) as conn, conn:
             current = conn.execute("SELECT * FROM device_states WHERE id = 1").fetchone()
             current_dict = row_to_dict(current) or {}
             next_values = {
@@ -850,7 +852,7 @@ def create_app(uno_bridge_override: Any | None = None) -> Flask:
                 """
                 UPDATE device_states
                 SET temperature = ?, door_open = ?, window_open = ?, light_level = ?,
-                    fan_on = ?, lock_open = ?, camera_online = ?, hardware_online = 1, updated_at = ?
+                    fan_on = ?, lock_open = ?, camera_online = ?, hardware_online = ?, updated_at = ?
                 WHERE id = 1
                 """,
                 (
@@ -861,6 +863,8 @@ def create_app(uno_bridge_override: Any | None = None) -> Flask:
                     next_values["fan_on"],
                     next_values["lock_open"],
                     next_values["camera_online"],
+                    int(bool(current_dict.get("hardware_online")))
+                    if payload.get("source") == "uno_usb_asr_d3_v1" else 1,
                     now,
                 ),
             )
@@ -889,7 +893,7 @@ def create_app(uno_bridge_override: Any | None = None) -> Flask:
             sidecar.submit(payload, pc_received_at)
         except Exception:
             app.logger.exception("Sidecar enqueue failed; primary sensor update was saved")
-        return jsonify({"ok": True, "status": row_to_dict(updated)})
+        return row_to_dict(updated)
 
     @app.post("/api/device/control")
     def device_control():
@@ -1544,6 +1548,10 @@ def create_app(uno_bridge_override: Any | None = None) -> Flask:
             rows = conn.execute("SELECT * FROM access_logs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return jsonify({"ok": True, "records": [row_to_dict(row) for row in rows]})
 
+    app.extensions["ingest_sensor"] = ingest_sensor
+    if hasattr(uno_bridge, "set_telemetry_handler"):
+        uno_bridge.set_telemetry_handler(ingest_sensor)
+    uno_bridge.start()
     return app
 
 
