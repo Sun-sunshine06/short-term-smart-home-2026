@@ -1,5 +1,7 @@
 # Short Term Smart Home 2026
 
+硬件组参考源码：[两块 Arduino 工程与使用说明](hardware/arduino/README.md)。尚未确认与板上固件一致，信息采集阶段不要直接烧录。
+
 > **2026-11-17 架构更新：** 摄像头改接电脑，香橙派作为 Arduino 硬件网关，Arduino 保留本地自动控制。分工已确认，通信接线与实现仍待验证。详见 [分工决定与实施方案](docs/proposals/pc-camera-hardware-gateway-2026-11-17.md)。下文保留原有实现说明，新架构尚未落地。
 
 2026 国际学院小学期智能家居项目小组协作仓库。
