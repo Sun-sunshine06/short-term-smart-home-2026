@@ -3,6 +3,11 @@ local/
 test_person_*
 
 # Python/backend runtime files
+hardware/arduino/usb_asr_d3_v1/.build/
+edge/local/
+.env
+*.db
+*.db-journal
 __pycache__/
 *.py[cod]
 .venv/

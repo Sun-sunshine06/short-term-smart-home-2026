@@ -17,6 +17,11 @@ from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
 try:
+    from sidecar import SidecarForwarder
+except ImportError:
+    from backend.sidecar import SidecarForwarder
+
+try:
     from vision.face_adapter import verify_face
     from vision.yolo_adapter import detect_image
 except ImportError:
@@ -710,6 +715,14 @@ def add_gallery_image(
 def create_app() -> Flask:
     app = Flask(__name__)
     init_db()
+    sidecar = SidecarForwarder.from_env()
+    app.extensions["sidecar"] = sidecar
+    sidecar.start()
+
+    @app.get("/api/sidecar/status")
+    def sidecar_status():
+        # Snapshot only: never wait for the edge node on a browser request.
+        return jsonify(sidecar.snapshot())
 
     @app.get("/")
     def dashboard():
@@ -761,6 +774,7 @@ def create_app() -> Flask:
     def sensor_update():
         payload = request.get_json(silent=True) or {}
         now = utc_now()
+        pc_received_at = datetime.now(timezone.utc).isoformat()
 
         temperature = payload.get("temperature")
         light_level = parse_int(payload.get("light_level"), 0)
@@ -824,6 +838,10 @@ def create_app() -> Flask:
             )
             conn.commit()
             updated = conn.execute("SELECT * FROM device_states WHERE id = 1").fetchone()
+        try:
+            sidecar.submit(payload, pc_received_at)
+        except Exception:
+            app.logger.exception("Sidecar enqueue failed; primary sensor update was saved")
         return jsonify({"ok": True, "status": row_to_dict(updated)})
 
     @app.post("/api/device/control")

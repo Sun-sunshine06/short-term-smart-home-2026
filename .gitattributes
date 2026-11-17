@@ -1,0 +1,3 @@
+# Preserve the supplied firmware package byte-for-byte for SHA256SUMS verification.
+hardware/arduino/usb_asr_d3_v1/** -text whitespace=cr-at-eol
+hardware/arduino/usb_asr_d3_v1/verification/compile_*.txt whitespace=cr-at-eol,-blank-at-eof
