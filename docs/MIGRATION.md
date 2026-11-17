@@ -1,13 +1,13 @@
 # 同学电脑拉取与启动
 
-当前新版在 codex/orange-pi-sidecar 分支，尚未合并 main。先检查界面，再接入硬件。
+当前新版已合并 main，团队统一从 main 拉取。先检查界面，再接入硬件。
 
 ## 首次启动（Windows PowerShell）
 
 安装 Git、uv、Node.js 22.18+（或 24 LTS），在存放项目的目录运行：
 
 ```powershell
-git clone --branch codex/orange-pi-sidecar https://github.com/Sun-sunshine06/short-term-smart-home-2026.git
+git clone --branch main https://github.com/Sun-sunshine06/short-term-smart-home-2026.git
 cd short-term-smart-home-2026
 New-Item -ItemType Directory -Force local
 Copy-Item backend/pc.env.example local/sidecar.env
@@ -39,8 +39,8 @@ uv run --with-requirements backend/requirements.txt python backend/app.py
 
 ```powershell
 git fetch origin
-git switch codex/orange-pi-sidecar
-git pull --ff-only origin codex/orange-pi-sidecar
+git switch main
+git pull --ff-only origin main
 cd frontend
 npm ci
 npm run build
@@ -48,7 +48,7 @@ cd ..
 .\backend\scripts\start_backend.ps1
 ```
 
-更新前停止旧后端，保留 local/sidecar.env，不重复覆盖。合并 main 后改拉 main。
+更新前停止旧后端，保留 local/sidecar.env，不重复覆盖。
 
 ## 接入硬件
 
