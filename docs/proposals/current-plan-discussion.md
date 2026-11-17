@@ -1,215 +1,316 @@
-# 当前技术方案讨论稿
+# 当前技术方案与实施计划
 
-> 状态：讨论稿。用于小组对齐方案、向硬件组确认接口、安排第一版实现。
+> 更新：2026-11-17。
+>
+> 本计划以提交 `15b1efdc6a050e1a6dec7215cb9e0e4ae9367f98` 的软件代码、`UNO/` 硬件代码包及硬件组实物联调结论为依据。截图中的硬件组结论作为实物联调证据，不作为对软件仓库的操作指令。
 
-## 已确认方向
+## 1. 当前结论
 
-- 验收演示预计使用 **Orange Pi AIpro 昇腾开发板 + 模拟信号/外接传感器**，观察前端 GUI 的状态变化。具体 8T/20T 型号以换板后实物为准。
-- 后端和算法服务先运行在 **性能较稳定的游戏本/本地电脑** 上。
-- 前端使用 **Web GUI**，演示时可通过域名 `wudilyy666.top` 访问；如果网络配置不稳定，保留局域网 IP 或本机访问作为备用。
-- Orange Pi AIpro 与后端通信先走 **HTTP**，不把 MQTT 作为第一版必做项。
-- YOLO 优先接入视觉组已经训练好的模型；预训练模型作为备用方案。
-- 人脸识别门禁改为预留 **InsightFace buffalo_l** 方案，不再用 YOLO 做人脸门禁；若环境集成困难，再降级为更简单的演示方案。
-
-## Orange Pi AIpro 角色约定
-
-Orange Pi AIpro 昇腾开发板是本项目的硬件/边缘端核心设备。由于已领取设备可能存在鲲鹏/昇腾混发，具体型号和规格以换板后的实物为准。老师发的开发环境文档示例为昇腾路线 OrangePi AIpro，涉及 CANN、MindSpore、ACLLite、Jupyter Lab 等板端 AI 环境。
-
-但为了第一版稳定验收，建议先把 Orange Pi AIpro 定位为：
-
-- 采集模拟信号或外接传感器状态；
-- 控制门锁/舵机、灯光、风扇等执行器；
-- 通过 HTTP 向后端上传状态；
-- 通过轮询或接收 HTTP 请求执行后端下发的控制命令；
-- 如摄像头接在 Orange Pi 上，则负责拍照并把图片上传给后端。
-
-第一版暂不强制把 Flask 后端、数据库、YOLO 或人脸识别全部部署到 Orange Pi 上。原因是昇腾/CANN/MindSpore 推理环境需要额外适配，短期内容易变成环境风险。后端和算法先跑在游戏本上，Orange Pi 先稳定完成硬件交互。
-
-## 第一版目标
-
-第一版先跑通完整链路：
+采用 **PC 中央节点 + 新 UNO USB 硬件入口 + 旧 UNO 执行器主控 + ESP32-CAM Wi-Fi 视频 + Orange Pi 网线边缘节点** 的结构。
 
 ```text
-Orange Pi AIpro / 硬件模拟信号
-  -> HTTP 上报到后端
-  -> 后端写入 SQLite / 更新当前状态
-  -> Web GUI 实时展示状态变化
-  -> GUI 可发出控制请求
-  -> 后端返回控制结果或下发给硬件端
+浏览器 / 手机
+      |
+      v
++--------------------------- PC ---------------------------+
+| Web GUI、Flask、SQLite、命令队列                         |
+| ESP32-CAM 视频接收、YOLO、InsightFace                   |
+| Arduino USB 桥接、设备状态与历史记录                    |
++----------+---------------------+--------------------------+
+           | USB 115200          | Wi-Fi / HTTP-MJPEG
+           v                     v
+        新扩展板 UNO          ESP32-CAM
+           |
+           | D10 -> D5，HomeLink V2，单向
+           v
+        旧主控板 UNO
+           |
+           +-- 门锁、灯、风扇、蜂鸣器、OLED、键盘、DHT11
+
+PC <---------------- 专用网线 / HTTP ----------------> Orange Pi
 ```
 
-图像链路的第一版目标：
+PC 是业务和计算中心。Arduino 控制链路第一阶段不经过 Orange Pi；Orange Pi 通过网线作为独立边缘节点接入。若以后确实需要把 USB 桥接迁移到 Orange Pi，`UNO/README_接线烧录与测试.md` 已允许新板 USB 在电脑与香橙派之间二选一，但第一阶段不同时接两处。
+
+## 2. 证据与状态分级
+
+### 已有代码并通过离线验证
+
+- 新板 ASRPRO TX 已从 D0 迁移到 D3；D0/D1 留给 USB 硬件串口。
+- 新板 USB 协议为 115200、8N1，支持 `PING`、灯、风扇、门锁、自动模式和 `FACE_OPEN`。
+- 新板通过 D10 向旧板 D5 发送带 CRC、序号和重复帧的 HomeLink V2 单向帧。
+- 旧板保留密码键盘、DHT11、自动温控、自动照明、舵机门锁、蜂鸣器和 OLED。
+- 两份固件已使用 AVR 工具链编译并生成 HEX；主机模拟测试通过。
+- 具体接线、烧录和命令定义以 `UNO/README_接线烧录与测试.md` 为准。
+
+### 硬件组报告已实机通过
+
+- 新扩展板 USB 接电脑，旧板保持供电和板间连接，旧板不需要为了软件通信再接 USB。
+- 使用新板 USB 命令入口控制实物灯已经通过。
+- 后续软件桥接可以发送 `LO`、`LC` 等命令。
+
+### 尚未视为实机完成
+
+- 软件仓库中的 Flask/GUI 尚未连接新板 USB。
+- `FACE_OPEN` 已有固件入口，但“人脸识别成功 -> 串口命令 -> 实物开门”尚未由软件组联调。
+- ESP32-CAM 的具体型号、固件、流地址、分辨率、帧率和延迟尚待实测。
+- Orange Pi 与 PC 的网线通信需要在最终电脑上重新确认地址和防火墙。
+- `UNO/verification/验证结果.md` 明确说明包内验证没有连接现场实物；除硬件组单独报告的开关灯结果外，其他动作仍需现场复测。
+
+## 3. 各设备职责
+
+### PC
+
+- 运行 Flask 后端、SQLite 和 Web GUI。
+- 运行 Arduino USB 桥接程序，独占新板串口。
+- 接收 ESP32-CAM 视频，维护最新帧并向网页转发预览。
+- 运行 YOLO 物体识别和 InsightFace 人脸识别。
+- 把网页控制和授权人脸事件转换为串口命令。
+- 保存命令生命周期、传感器数据、识别记录和节点在线状态。
+- 通过专用网线与 Orange Pi 通信。
+
+### 新扩展板 UNO
+
+- 作为软件控制硬件的唯一 USB 入口，115200 波特率。
+- 通过 D3 接收 ASRPRO 9600 波特率语音命令。
+- 读取雨水、土壤湿度、超声波和触摸门铃。
+- 通过 USB 输出自身传感器数据和命令处理日志。
+- 通过 HomeLink V2 将控制命令和雨水/土壤状态发送给旧板。
+- 对 `FACE_OPEN` 实施 10 秒固件冷却。
+
+### 旧主控板 UNO
+
+- 控制舵机门锁、风扇、RGB灯和蜂鸣器。
+- 读取 DHT11、光照和密码键盘。
+- 执行本地密码开门、4 秒自动关门、温控回差和自动照明。
+- 接收新板 HomeLink V2 命令。
+- 旧板运行时不接 USB，避免 D0/D1 密码键盘与硬件串口冲突。
+
+### ESP32-CAM
+
+- 通过 Wi-Fi 提供 JPEG/MJPEG 或经实测确认的其他视频流。
+- 不承担 YOLO、人脸识别、数据库或网页服务。
+- 只允许 PC 建立主要视频连接，由 PC 向浏览器和算法分发。
+
+### Orange Pi
+
+- 通过网线向 PC 注册、发送心跳和系统指标。
+- 第一阶段不在 Arduino 控制链路中，避免同时维护“PC USB”和“Orange Pi USB”两套入口。
+- 暂不运行 YOLO、人脸识别或数据库。
+- 后续可承担离线缓存、边缘传感器或 USB 桥接迁移，但必须作为单独阶段验证。
+
+## 4. 当前硬件协议
+
+新板 USB 输入必须以换行、回车或分号结束，大小写不敏感。
+
+| 命令 | 作用 |
+| --- | --- |
+| `PING` | 返回 `PONG,USB_ASR_D3_V1` |
+| `LO` / `LC` | 开灯 / 关灯，进入手动照明模式 |
+| `FO` / `FC` | 开风扇 / 关风扇，进入手动风扇模式 |
+| `DO` / `DC` | 开门 / 关门，开门约 4 秒后自动关闭 |
+| `BELL` | 门铃，不开门 |
+| `FA` / `LA` / `AUTO` | 恢复风扇 / 照明 / 两者自动模式 |
+| `FACE_OPEN` | 人脸授权开门入口，固件 10 秒冷却 |
+
+必须区分以下响应：
+
+- `USB_CMD:...,QUEUED`：新板已接受并入队。
+- `LINK_TX:...,SENT_NO_ACK`：新板已发送单向帧，但没有旧板执行回执。
+- `USB_BUSY`：队列已满，命令没有接收。
+- `USB_UNKNOWN` / `USB_TIMEOUT`：命令无效或残片已丢弃。
+- `USB_CMD:FACE_OPEN,COOLDOWN`：人脸开门仍在冷却期，没有入队。
+
+当前 HomeLink 没有旧板到新板的返回线。因此 GUI 第一阶段应显示“已入队”“已发往旧板”“失败/超时”，不能把 `SENT_NO_ACK` 显示为“硬件确认执行成功”。
+
+## 5. 需要实现的软件
+
+### 5.1 PC Arduino USB 桥接
+
+建议新增：
 
 ```text
-Orange Pi AIpro / 摄像头或测试图片
-  -> 图片先进入 Orange Pi
-  -> Orange Pi 拍照或读取本地测试图片
-  -> POST /api/camera/upload 上传给后端
-  -> 后端保存图片
-  -> 后端把保存后的 image_path 交给 YOLO adapter
-  -> YOLO 结果写入 detection_records
-  -> Web GUI 展示最新识别结果
+backend/hardware/
+  serial_bridge.py
+  uno_protocol.py
+  command_router.py
 ```
 
-第一版不追求复杂算法训练或实时视频高帧率，优先保证演示稳定。
+职责：
 
-## 开发板替换后的判断
+1. 扫描并打开新板串口，默认 115200。
+2. 发送 `PING`，只有收到 `PONG,USB_ASR_D3_V1` 才认定为正确设备。
+3. 串口被拔出或新板复位后自动重连并重新握手。
+4. 将后端控制目标映射为固件命令。
+5. 解析 `QUEUED`、`SENT_NO_ACK`、`BUSY`、`UNKNOWN`、`COOLDOWN`。
+6. 解析新板雨水、土壤、距离和 `NEAR` 遥测。
+7. 串口监视器与桥接程序不能同时占用端口。
 
-当前已知：老师通知部分鲲鹏开发板混入昇腾开发板，需要换成昇腾开发板；配套文档《手把手教你搭建 OrangePi AIpro 开发环境》主要说明昇腾版 AIpro 的系统镜像、联网、CANN、ACLLite、MindSpore 和 Jupyter Lab 目标检测样例。
-
-对本方案的影响：
-
-- 第一版主流程不变：Orange Pi 负责采集/上传，后端电脑负责 Flask、SQLite、YOLO、人脸识别和 Web GUI；
-- 需要重新确认换到的开发板型号、系统镜像、默认用户、网络连接方式；
-- 硬件 Profile 和前端展示不能继续写死 `20T`，应改为“Orange Pi AIpro 昇腾开发板，具体型号待确认”；
-- 若老师要求展示板端 AI 推理，再单独开任务研究 CANN/MindSpore/ACLLite、模型转换和板端 YOLO 推理；
-- 当前验收优先保证 HTTP、图片上传、数据库、GUI、后端 YOLO 记录闭环稳定。
-
-## 需要向硬件组确认的接口问题
-
-### 1. 硬件端上报方式
-
-需要确认 Orange Pi AIpro 是否能通过 HTTP 向后端发送状态数据。
-
-建议接口：
+第一版命令映射：
 
 ```text
-POST /api/sensor/update
-Content-Type: application/json
+light on/off       -> LO / LC
+fan on/off         -> FO / FC
+fan auto           -> FA
+light auto         -> LA
+all auto           -> AUTO
+door open/close    -> DO / DC
+authorized face    -> FACE_OPEN
+doorbell           -> BELL
 ```
 
-示例数据：
+### 5.2 Flask 命令模型
 
-```json
-{
-  "temperature": 28.5,
-  "door_open": false,
-  "window_open": true,
-  "light_level": 70,
-  "fan_on": false,
-  "lock_open": false
-}
-```
-
-### 2. 后端控制硬件方式
-
-需要确认是：
-
-- 后端直接向 Orange Pi 发送 HTTP 请求；
-- 还是 Orange Pi 定时向后端轮询控制命令；
-- 或者第一版只做前端状态模拟，不实际反控硬件。
-
-建议第一版采用更容易调试的方式：
+现有 `/api/device/control` 和 `device_commands` 表可以保留，但命令状态调整为：
 
 ```text
-Orange Pi 定时 GET /api/device/commands
+pending -> serial_sent -> queued -> link_sent_no_ack
+                            |          |
+                            +-- failed / busy / timeout
 ```
 
-这样后端不需要知道 Orange Pi 的固定 IP，也更适合校园网/局域网不稳定场景。
+需要增加或保存：
 
-### 3. 模拟信号范围
+- 串口命令文本；
+- 控制来源：GUI、人脸、自动规则；
+- 固件响应原文；
+- 入队时间、发送时间、最终状态；
+- 对于无法确认的旧板动作，明确 `confirmed=false`。
 
-需要硬件组确认每个模拟信号的含义：
-
-- 温度：真实温度传感器，还是滑动变阻器/模拟值？
-- 门窗：按钮/开关模拟，还是实际磁簧/限位开关？
-- 灯光亮度：PWM 数值范围是否为 0-100？
-- 风扇：真实风扇开关，还是 LED/继电器状态模拟？
-- 门禁：舵机开门，还是页面状态模拟？
-
-### 4. 摄像头归属
-
-需要确认摄像头接在：
-
-- 后端电脑；
-- Orange Pi AIpro；
-- 其他硬件设备。
-
-目前建议第一版按“图片先进入 Orange Pi，Orange Pi 上传，游戏本后端推理”推进：摄像头或测试图片由 Orange Pi 负责采集/读取和上传，但 YOLO 和人脸识别先在后端电脑运行，稳定性更高。
-
-如果摄像头接在 Orange Pi AIpro 上，需要确认：
-
-- Orange Pi 如何拍照；
-- 图片如何传给后端，第一版建议走 `POST /api/camera/upload`；
-- 第一版上传原图，由后端保存后交给 YOLO；
-- 验收时可以先不接真实摄像头，直接把测试图片复制到 Orange Pi，再用 `orange_pi_client.py --upload-image <图片路径>` 上传；
-- 拍照命令由硬件/边缘端确认，后端只要求最终能拿到图片文件或 base64 图片数据。
-
-### 5. Orange Pi 环境与网络
-
-需要硬件组确认：
-
-- Orange Pi AIpro 使用什么系统：Ubuntu、openEuler、Orange Pi OS，还是其他；
-- 是否能连接到和后端电脑相同的局域网；
-- 是否能稳定访问后端电脑的 IP 和端口；
-- 是否能运行 Python 脚本，或使用其他语言发送 HTTP 请求；
-- 是否需要固定 IP、热点、网线直连或路由器；
-- GPIO、PWM、I2C、UART 等接口最终会用到哪些。
-
-## 后端接口草案
+### 5.3 人脸开门闭环
 
 ```text
-GET  /                     Web GUI
-GET  /api/status            获取当前状态
-POST /api/sensor/update     Orange Pi 上传传感器/模拟信号
-POST /api/device/control    前端提交控制请求
-GET  /api/device/commands   Orange Pi 轮询待执行命令
-POST /api/camera/upload     Orange Pi 上传图片，后端保存后交给 YOLO
-POST /api/yolo/detect       YOLO 物体识别
-POST /api/face/verify       InsightFace 人脸门禁
-GET  /api/face/users        授权人员列表
-POST /api/face/users        新增授权人员，可附带注册照路径
-POST /api/face/users/<id>/images  给授权人员追加注册照
-GET  /api/face/gallery      查看人脸注册照目录状态
-GET  /api/history           查询历史记录
+ESP32-CAM 新鲜帧
+  -> InsightFace
+  -> 新的授权事件
+  -> Flask 创建门禁记录
+  -> 串口桥接发送一次 FACE_OPEN\n
+  -> 新板入队并转发
+  -> 旧板开门
+  -> 旧板约 4 秒后本地自动关门
 ```
 
-## 算法部分策略
+软件必须只在“未处理过的新授权事件”上发送一次，不可因页面轮询或连续视频帧重复发送。固件的 10 秒冷却是第二层保护，不能替代软件去重。
 
-### YOLO
+陌生人、无脸、模型不可用、视频帧过期、串口离线时均不得发送 `FACE_OPEN`。
 
-- 第一版：优先接入视觉组已经训练好的 YOLO26s 模型，做单张图片或低频识别。
-- 备用方案：如果自训练模型集成时间不够，则使用 Ultralytics 预训练模型识别人、车等常见类别。
-- 视觉组当前交付模型路径：`training/models/object_fire400_drone2800_yolo26s_v1_best.pt`。
-- 模型权重不直接提交 Git，通过 Release、共享盘或网盘分发；后端通过 `MODEL_PATH` 指向本地模型。
-- YOLO 权重、类别表、测试图片和真实推理文件由 YOLO 组交付；后端只负责把上传后的图片路径交给 YOLO adapter。
-- Orange Pi 上传图片后，后端必须触发 YOLO 记录，不应只保存图片。
-- 第一版输入：`image_path: str`。
-- 第一版输出：`result_image_path`、`detections`、`model`。
-- 视觉组已提供 `training/` 目录中的训练、验证和接口说明；后端 adapter 已按该路径优先适配。
+### 5.4 ESP32-CAM 视频服务
 
-当前类别：
+建议新增：
 
 ```text
-0: fire_extinguisher
-1: drone
+backend/video/
+  esp32_camera.py
+  frame_buffer.py
+  inference_scheduler.py
 ```
 
-### 人脸识别
+链路：
 
-- 第一版目标：完成 2 名授权人员 + 1 名非授权人员演示。
-- 优先方案：InsightFace `buffalo_l`。
-- 计划使用：SCRFD 人脸检测、5 点关键点、ArcFace 标准对齐、w600k_r50 embedding、cosine similarity 比对。
-- 视觉组当前建议阈值：cosine similarity `0.40`，`min_margin = 0.05`；后续用实际注册照和测试照重新标定。
-- 后端预留 `verify_face(image_path)`，返回 `matched`、`user_id`、`name`、`score`、`threshold`、`min_margin`、`score_margin`、`bbox`、`landmarks_5`、`engine`、`model_pack` 等字段。
-- 识别通过后：前端显示授权通过，后端记录日志，并触发开门状态。
-- 识别失败后：前端显示未授权，门锁不打开。
+```text
+ESP32-CAM -> Wi-Fi -> PC 单路接收
+                         +-> Web GUI 预览
+                         +-> YOLO 抽帧
+                         +-> 人脸验证取新鲜帧
+```
 
-## 还需要团队确认的问题
+- 浏览器不直接连接 ESP32-CAM。
+- PC 维护内存中的最新帧；不把每个视频帧写入 SQLite。
+- 视频预览与推理解耦，推理繁忙时丢弃旧的待处理帧。
+- 第一阶段先确认实际流 URL 和单路预览，再接入 YOLO/人脸识别。
 
-1. 后端最终运行在哪台电脑上，是否确定使用游戏本？
-2. 域名 `wudilyy666.top` 谁负责解析、反代、内网穿透或端口转发？
-3. Orange Pi AIpro 能否按 JSON 格式走 HTTP 上报？
-4. 控制链路采用“后端主动发给 Orange Pi”还是“Orange Pi 轮询后端命令”？
-5. 摄像头最终接在哪里？
-6. YOLO 组能否提供正式模型文件、类别表、测试图片和 `detect_image(image_path)`？
-7. 人脸识别环境由谁搭，InsightFace 注册照/阈值如何标定？
-8. GUI 需要哪些页面：只做 Dashboard，还是再加历史记录页/人员录入页？
-9. 验收时是否需要手机访问，还是电脑浏览器演示即可？
+### 5.5 Orange Pi 网线节点
 
-## 建议下一步
+建议使用专用静态网段：
 
-- 先向硬件组确认 Orange Pi AIpro 的系统环境、HTTP 接口、模拟信号含义、摄像头连接方式。
-- 软件组先做 Flask + SQLite + Web GUI 空壳，用模拟数据跑通页面。
-- Orange Pi 接口未定前，后端先提供 `/api/sensor/update` 和 `/api/status`，方便硬件组联调。
-- YOLO、人脸识别先独立做 demo，等后端基本接口稳定后再接入 GUI。
+```text
+PC Ethernet:       192.168.50.1/24
+Orange Pi eth0:    192.168.50.2/24
+Backend:           http://192.168.50.1:5000
+```
+
+专用网口不设置默认网关，PC 的 Wi-Fi 保持用于 ESP32-CAM、浏览器或互联网。地址可按现场网络调整，但应固定记录。
+
+现有 `edge/orange_pi_client.py` 第一阶段只保留：
+
+- 节点注册；
+- 心跳和系统资源；
+- PC连通性检查；
+- 断线重连。
+
+移除演示主线中“香橙派USB摄像头上传”和“模拟执行Arduino命令”的依赖，避免与实际 ESP32-CAM 和 PC USB 桥接混淆。
+
+## 6. 数据可信度边界
+
+新板可以通过 USB 上报：
+
+- 雨水原始值、百分比和干湿状态；
+- 土壤原始值、百分比和状态；
+- 超声波距离；
+- 是否有人靠近；
+- 触摸门铃和语音命令事件。
+
+当前无法经 USB 获得：
+
+- 旧板 DHT11 温湿度；
+- 旧板灯、风扇、门锁的真实执行反馈；
+- 门的物理位置传感器反馈。
+
+旧板 OLED 上的门状态也是软件控制状态，不是限位开关或门磁反馈。第一版 GUI 对这些字段应显示“命令状态/推测状态”或“未知”，不能伪装成真实传感器状态。
+
+如果验收要求在 GUI 展示真实温湿度和旧板执行回执，硬件组还需提供旧板返回通道、重新分配引脚，或增加 IO 扩展器；这属于后续硬件改造，不能仅靠 PC 软件解决。
+
+灯环当前只支持固定亮度 `35` 的开/关，不支持 GUI 任意百分比调光。前端第一版只保留灯开关。
+
+## 7. 分阶段实施与验收
+
+### 阶段 A：USB 开关灯闭环
+
+1. 将 `UNO/` 作为硬件固件唯一来源，确认两块板均烧录配套版本。
+2. 按说明确认 ASRPRO TX 已从新板 D0 移到 D3。
+3. 新板 USB 接软件运行 PC，关闭 Arduino 串口监视器。
+4. 实现串口握手、`LO`、`LC` 和响应解析。
+5. GUI 点击开/关灯，实物灯动作。
+6. GUI 如实显示 `QUEUED` 和 `SENT_NO_ACK`。
+
+验收：连续开关灯、断开重连、错误端口、队列忙时均有明确结果。
+
+### 阶段 B：其他硬件控制与遥测
+
+1. 接入风扇、自动模式、门锁和门铃命令。
+2. 解析雨水、土壤、距离和靠近状态。
+3. 将有效遥测写入 SQLite 并在 GUI 展示更新时间。
+4. 复测语音和 USB 命令互不干扰。
+
+验收：本地密码、语音、GUI 三种入口均保留；PC断开后旧板本地自动控制仍工作。
+
+### 阶段 C：ESP32-CAM
+
+1. 确认板型、固件、Wi-Fi和流地址。
+2. PC 建立单路视频接收和网页预览。
+3. 接入最新帧缓存和摄像头在线状态。
+4. 再接 YOLO 抽帧识别。
+
+### 阶段 D：人脸门禁
+
+1. 用两名授权人员和一名陌生人重新标定人脸阈值。
+2. 授权事件发送一次 `FACE_OPEN`。
+3. 验证授权人开门、陌生人不开门、约4秒自动关门。
+4. 验证同一人持续在镜头前不会重复开门。
+5. 验证视频、模型、串口任一环节离线时安全拒绝。
+
+### 阶段 E：Orange Pi 网线接入
+
+1. 固定PC与Orange Pi地址。
+2. 验证注册、心跳、重启恢复和断线提示。
+3. GUI分别显示PC后端、Orange Pi、摄像头、新UNO和视觉服务状态。
+
+## 8. 当前最高优先级
+
+1. 将 `UNO/` 代码包提交到软件组实际使用的分支，记录固件版本 `USB_ASR_D3_V1`。
+2. 新板 USB 接软件运行 PC，关闭串口监视器。
+3. 实现 PC USB 桥接和 `PING` 握手。
+4. 打通 `GUI -> Flask -> LO/LC -> 实物灯`。
+5. 将人脸授权结果从“只改数据库状态”改为发送一次 `FACE_OPEN`。
+6. 独立验证 ESP32-CAM Wi-Fi 视频，不与 Arduino 串口联调混在同一步。
+7. 最后接入 Orange Pi 网线心跳，保持其与 Arduino 控制链路解耦。

@@ -1,0 +1,38 @@
+{
+  "old": {
+    "DHT_PIN": "2",
+    "DHT_TYPE": "DHT11",
+    "LIGHT_DO_PIN": "A2",
+    "SERVO_PIN": "3",
+    "BUZZER_PIN": "4",
+    "VOICE_COMMAND_PIN": "5",
+    "FAN_INB_PIN": "6",
+    "RGB_LED_PIN": "7",
+    "RGB_LED_COUNT": "8",
+    "OLED_RESET": "8",
+    "OLED_DC": "9",
+    "OLED_CS": "10",
+    "OLED_DATA": "11",
+    "OLED_CLOCK": "13",
+    "KEYPAD_ROW_1": "1",
+    "KEYPAD_ROW_2": "0",
+    "KEYPAD_ROW_3": "12",
+    "KEYPAD_ROW_4": "A5",
+    "KEYPAD_COL_1": "A4",
+    "KEYPAD_COL_2": "A3",
+    "KEYPAD_COL_3": "A1",
+    "KEYPAD_COL_4": "A0"
+  },
+  "new": {
+    "OLD_BOARD_SIGNAL_PIN": "10",
+    "STATUS_LED_PIN": "13",
+    "TOUCH_PIN": "2",
+    "ULTRASONIC_TRIG_PIN": "8",
+    "ULTRASONIC_ECHO_PIN": "9",
+    "RAIN_AO_PIN": "A0",
+    "SOIL_AO_PIN": "A1",
+    "ASR_RX_PIN": "3",
+    "USB_BAUD": 115200,
+    "ASR_BAUD": 9600
+  }
+}

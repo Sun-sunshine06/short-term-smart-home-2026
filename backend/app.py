@@ -17,9 +17,11 @@ from flask import Flask, jsonify, render_template, request, send_file
 from werkzeug.utils import secure_filename
 
 try:
+    from hardware.uno_serial import UnoBridgeError, UnoBridgeUnavailable, UnoCommandRejected, get_uno_bridge
     from vision.face_adapter import verify_face
     from vision.yolo_adapter import detect_image
 except ImportError:
+    from backend.hardware.uno_serial import UnoBridgeError, UnoBridgeUnavailable, UnoCommandRejected, get_uno_bridge
     from backend.vision.face_adapter import verify_face
     from backend.vision.yolo_adapter import detect_image
 
@@ -707,9 +709,12 @@ def add_gallery_image(
     return conn.execute("SELECT * FROM face_gallery_images WHERE id = ?", (cursor.lastrowid,)).fetchone()
 
 
-def create_app() -> Flask:
+def create_app(uno_bridge_override: Any | None = None) -> Flask:
     app = Flask(__name__)
     init_db()
+    uno_bridge = uno_bridge_override or get_uno_bridge()
+    uno_bridge.start()
+    app.extensions["uno_serial"] = uno_bridge
 
     @app.get("/")
     def dashboard():
@@ -736,7 +741,18 @@ def create_app() -> Flask:
 
     @app.get("/api/health")
     def health():
-        return jsonify({"ok": True, "time": utc_now(), "database": str(get_db_path())})
+        return jsonify(
+            {
+                "ok": True,
+                "time": utc_now(),
+                "database": str(get_db_path()),
+                "uno": uno_bridge.snapshot(),
+            }
+        )
+
+    @app.get("/api/hardware/uno")
+    def uno_status():
+        return jsonify({"ok": True, "uno": uno_bridge.snapshot()})
 
     @app.get("/api/files/image")
     def image_file():
@@ -849,7 +865,66 @@ def create_app() -> Flask:
                 ),
             )
             conn.commit()
-        return jsonify({"ok": True, "command_id": cursor.lastrowid})
+            command_id = cursor.lastrowid
+
+        uno_commands = {
+            ("light", "on"): ("LO", "light_level", 35),
+            ("light", "off"): ("LC", "light_level", 0),
+            ("fan", "on"): ("FO", "fan_on", 1),
+            ("fan", "off"): ("FC", "fan_on", 0),
+            ("door", "open"): ("DO", "door_open", 1),
+            ("door", "close"): ("DC", "door_open", 0),
+        }
+        uno_mapping = uno_commands.get((target.lower(), action.lower()))
+        if uno_mapping is None:
+            return jsonify({"ok": True, "command_id": command_id, "status": "pending"})
+        uno_command, state_field, commanded_value = uno_mapping
+
+        sent_at = utc_now()
+        try:
+            delivery = uno_bridge.send_command(uno_command)
+        except (UnoBridgeUnavailable, UnoCommandRejected, UnoBridgeError) as exc:
+            with connect_db() as conn:
+                conn.execute(
+                    "UPDATE device_commands SET status = 'failed', sent_at = ?, ack_at = ? WHERE id = ?",
+                    (sent_at, utc_now(), command_id),
+                )
+                conn.commit()
+            return (
+                jsonify(
+                    {
+                        "ok": False,
+                        "command_id": command_id,
+                        "status": "failed",
+                        "error": str(exc),
+                        "uno": uno_bridge.snapshot(),
+                    }
+                ),
+                503,
+            )
+
+        with connect_db() as conn:
+            conn.execute(
+                "UPDATE device_commands SET status = ?, sent_at = ?, ack_at = ? WHERE id = ?",
+                (delivery.stage, sent_at, utc_now(), command_id),
+            )
+            conn.execute(
+                f"UPDATE device_states SET {state_field} = ?, hardware_online = 1, updated_at = ? WHERE id = 1",
+                (commanded_value, utc_now()),
+            )
+            conn.commit()
+
+        message = "命令已发往旧板（旧板无返回线）" if delivery.stage == "link_sent_no_ack" else "新板已接收命令"
+        return jsonify(
+            {
+                "ok": True,
+                "command_id": command_id,
+                "status": delivery.stage,
+                "message": message,
+                "delivery": delivery.to_dict(),
+                "uno": uno_bridge.snapshot(),
+            }
+        )
 
     @app.get("/api/device/commands")
     def device_commands():
