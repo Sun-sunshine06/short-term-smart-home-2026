@@ -3,6 +3,8 @@ local/
 test_person_*
 
 # Python/backend runtime files
+frontend/node_modules/
+frontend/dist/
 hardware/arduino/usb_asr_d3_v1/.build/
 edge/local/
 .env

@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 from werkzeug.utils import secure_filename
 
 try:
@@ -732,6 +732,14 @@ def create_app(uno_bridge_override: Any | None = None) -> Flask:
     @app.get("/")
     def dashboard():
         return render_template("dashboard.html")
+
+    @app.get("/next/")
+    @app.get("/next/<path:asset>")
+    def astryx_home(asset="index.html"):
+        build_dir = BASE_DIR.parent / "frontend" / "dist"
+        if not (build_dir / "index.html").is_file():
+            return jsonify({"error": "Frontend preview is not built. Run npm ci and npm run build in frontend/."}), 503
+        return send_from_directory(build_dir, asset)
 
     @app.get("/api")
     def index():

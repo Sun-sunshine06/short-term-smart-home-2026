@@ -898,6 +898,12 @@ async function refreshAll() {
 }
 
 bindEvents();
+const initialPage = window.location.hash.slice(1);
+if (["home", "data", "vision", "access", "system"].includes(initialPage)) setPage(initialPage);
+window.addEventListener("hashchange", () => {
+  const page = window.location.hash.slice(1);
+  if (["home", "data", "vision", "access", "system"].includes(page)) setPage(page);
+});
 refreshAll();
 setInterval(() => {
   refreshStatus();

@@ -1,64 +1,61 @@
-# 迁移到同学电脑与软件分工
+# 同学电脑拉取与启动
 
-项目负责人负责规划和前端效果；UNO、摄像头和最终后端部署由同学电脑承载。负责人电脑无需连接硬件。当前旁路代码已在负责人电脑与真实香橙派之间验证，但尚未在同学电脑上验收，不能把可迁移设计说成已完成目标机器验证。
+当前新版在 codex/orange-pi-sidecar 分支，尚未合并 main。先检查界面，再接入硬件。
 
-## 迁移边界
+## 首次启动（Windows PowerShell）
 
-源码、Python 依赖清单、硬件固件包、示例配置和检查脚本随 Git 迁移。不要复制 `.venv`、个人绝对路径、运行数据库或缓存。当前板端服务已经独立运行，不依赖负责人电脑的 SSH 会话。
+安装 Git、uv、Node.js 22.18+（或 24 LTS），在存放项目的目录运行：
 
-需要在同学电脑单独配置：
+```powershell
+git clone --branch codex/orange-pi-sidecar https://github.com/Sun-sunshine06/short-term-smart-home-2026.git
+cd short-term-smart-home-2026
+New-Item -ItemType Directory -Force local
+Copy-Item backend/pc.env.example local/sidecar.env
+cd frontend
+npm ci
+npm run build
+cd ..
+.\backend\scripts\start_backend.ps1
+```
 
-| 配置 | 所在位置 | 说明 |
-| --- | --- | --- |
-| 香橙派地址与共享密钥 | `local/sidecar.env` | 从 `edge/pc.env.example` 复制；密钥必须与板端一致，通过私下方式交接，不提交 Git |
-| 新板 USB 端口 | `local/sidecar.env` 的 `UNO_PORT` | 使用同学电脑实际 COM 号，不能沿用其他电脑编号 |
-| 稳定设备身份 | `local/sidecar.env` 的 `UNO_DEVICE_ID` | 当前配置为 `uno-soil-rain`；换 COM 号不改设备身份 |
-| 网络 | 同学电脑有线网口 | 当前板端是 192.168.137.100；确认实际网络后配置同网段地址，不自动改默认网关 |
-| 视觉模型与图库 | 既有视觉配置 | 单独迁移模型与经授权的图库，旁路部署不等于视觉环境已就绪 |
+访问 **http://127.0.0.1:5000/next/**。没有硬件时打开右上角“演练模式”。
+旧页面在 /。frontend/dist 不提交 Git，拉取后必须构建。模板禁用串口及旁路，仅监听本机。
 
-单条网线直连时，转接到同学电脑后负责人电脑不再是该链路的主机；不要在同一网络中让两台电脑同时占用同一个静态 IP。Windows 之前使用的 ActiveStore 地址不是永久网络配置。
+脚本使用 uv 管理依赖，读取 local/sidecar.env 中的 HOST、PORT、UNO 和 SIDECAR 配置。
+若本机限制执行脚本，可设置进程环境变量后直接启动（下面为无硬件预览）：
 
-## 同学电脑启动顺序（Windows）
+```powershell
+$env:HOST = '127.0.0.1'
+$env:PORT = '5000'
+$env:UNO_SERIAL_ENABLED = '0'
+$env:SIDECAR_URL = ''
+$env:SIDECAR_TOKEN = ''
+uv run --with-requirements backend/requirements.txt python backend/app.py
+```
 
-1. 安装 Git 和 uv，拉取当前开发分支或合并后的主分支；项目可以放在任意目录。已有工作目录先检查未提交改动，不覆盖同学自己的代码。
-2. 在仓库根目录创建 `local`，复制 `edge/pc.env.example` 为 `local/sidecar.env`，填写板端实际地址与已交接的共享密钥。该文件由 Git 忽略。
-3. 运行只读检查：
+## 已有项目更新
 
-   ```powershell
-   uv run python backend/scripts/check_sidecar.py
-   ```
+先 git status 检查并保存同学自己的改动，不强制覆盖。工作区干净后：
 
-   检查只读取节点状态，不打开串口、不发送样本、不控制设备。失败不妨碍本地前端开发。
+```powershell
+git fetch origin
+git switch codex/orange-pi-sidecar
+git pull --ff-only origin codex/orange-pi-sidecar
+cd frontend
+npm ci
+npm run build
+cd ..
+.\backend\scripts\start_backend.ps1
+```
 
-4. 停止旧 collect_uno 进程及串口监视器，配置实际 UNO_PORT 后启动单个后端进程（打开端口可能使新板复位）：
+更新前停止旧后端，保留 local/sidecar.env，不重复覆盖。合并 main 后改拉 main。
 
-   ```powershell
-   .\backend\scripts\start_backend.ps1
-   ```
+## 接入硬件
 
-   脚本相对自身定位项目目录并使用 uv 管理依赖，自动读取本地旁路配置。若终端限制运行 PowerShell 脚本，可在该终端手动设置两个 `SIDECAR_` 环境变量，再运行 `uv run --with-requirements backend/requirements.txt python backend/app.py`；无需修改全局执行策略。
+1. 本地配置将 UNO_SERIAL_ENABLED 改为 1，UNO_PORT 填同学电脑新板实际 COM 号，波特率 115200。不要照搬 COM9；UNO_DEVICE_ID 可保持 uno-soil-rain。
+2. 关闭 Arduino 串口监视器和旧独立采集进程，只运行一个后端读取串口。打开串口可能使新板复位。旧板 D0/D1 接键盘，不作为遥测 USB 接口。
+3. 关闭演练模式，检查真实读数来源、新鲜度，再现场核对指令与实物变化。指令投递不等于执行确认。
+4. 香橙派可选：填写 SIDECAR_URL 和与板端一致的 SIDECAR_TOKEN。板端地址曾为 192.168.137.100，迁移需重新确认网络；密钥私下交接，不入 Git。运行 uv run python backend/scripts/check_sidecar.py 只读检查。
+5. 摄像头、模型和授权图库按各自部署说明配置。前端构建成功不表示视觉环境已就绪。现场验证香橙派断开和恢复时电脑主流程仍可工作。
 
-5. 打开 `http://127.0.0.1:5000/`，确认后端在线、旁路状态准确。首次启动的设备卡片含原型初始值，不是现场测量证据；真实采集接入前不要当作有效读数展示。
-6. 后端已统一读取新板数据，可选运行状态监视器，它不会再打开串口：
-
-   ```powershell
-   uv run python backend/scripts/collect_uno.py --once
-   ```
-
-   新板使用 115200；旧板 D0/D1 仍接键盘，不把旧板当成遥测 USB 接口。无硬件开发时配置 UNO_SERIAL_ENABLED=0。
-
-7. 接入真实雨滴/土壤后，确认来源、最近接收时间、状态变化；停止香橙派服务或拔其网线，验证电脑采集与页面继续运行，恢复后再次确认新数据。视频与硬件控制链路各自单独验收。
-
-## 可以独立推进的软件工作
-
-| 优先级 | 工作 | 可交付结果与边界 |
-| --- | --- | --- |
-| P0 | 页面信息结构与状态规范 | 首页、设备控制、视频/识别、历史、系统；区分演示、真实、离线、未知、过期、未接入 |
-| P0 | 可切换的前端演示场景 | 正常、雨滴变化、持续干燥、节点离线、识别失败等；独立演示数据源，不能向真实控制接口发送演示命令 |
-| P0 | 固定软硬件接口 | 稳定设备 ID、遥测字段、控制命令映射、事件 ID、错误码与能力清单，前后端可据此独立开发 |
-| P1 | 新板 USB 命令桥接 | 映射明确支持的灯/风扇/门/自动模式；有界队列、超时、单次授权事件，不把 QUEUED/SENT_NO_ACK 显示成执行成功 |
-| P1 | 历史数据与边缘事件页面 | 雨滴/土壤时间线、事件原因与来源、超时恢复记录；当前仅有旁路状态区和板端历史接口 |
-| P1 | 电脑摄像头/ESP32-CAM 接入 | 预览与抽帧识别独立，现场确认 URL、帧率与网络能力；前端可先用录制样例演示 |
-| P2 | 门禁流程与验收 | 授权识别产生一次开门请求、失败提示、冷却/去重；真实执行仍依赖同学现场验收 |
-
-先完成“前端演示模式 + 状态规范”，负责人即可在没有硬件的情况下迭代界面、讨论分工、录制演示；同学同时负责串口、摄像头与实际控制验证。现有代码尚未提供完整的演示/实机模式隔离，不能把当前原型初始数据视为已实现此功能。
+不要复制 .venv、node_modules、个人绝对路径、运行数据库和缓存；按源码与锁文件重建环境。实机验收仍需同学完成。
