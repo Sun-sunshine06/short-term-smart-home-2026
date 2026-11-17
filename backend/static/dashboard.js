@@ -131,7 +131,10 @@ async function api(path, options = {}) {
 }
 
 function mergedStatus(data) {
-  return { ...data, ...localOverrides };
+  const estimates = Object.fromEntries(
+    Object.entries(data.expected_states || {}).map(([field, state]) => [field, state.value])
+  );
+  return { ...data, ...localOverrides, ...estimates };
 }
 
 function setPage(pageName) {
@@ -185,16 +188,19 @@ function pulseFeedback(element) {
 
 function applyStatusToUi(data) {
   const temperatureText = data.temperature == null ? "--" : `${Number(data.temperature).toFixed(1)}°C`;
-  const doorText = boolText(data.door_open, "开启", "关闭");
+  const estimated = (field, text) => data.expected_states?.[field] ? `预计${text}（未确认）` : text;
+  const doorText = estimated("door_open", boolText(data.door_open, "开启", "关闭"));
   const windowText = boolText(data.window_open, "开启", "关闭");
-  const lightText = `${data.light_level ?? 0}%`;
-  const fanText = localOverrides.fan_level != null
+  const lightText = estimated("light_level", `${data.light_level ?? 0}%`);
+  const fanText = estimated("fan_on", localOverrides.fan_level != null
     ? `${localOverrides.fan_level} 档`
-    : boolText(data.fan_on, "运行", "停止");
+    : boolText(data.fan_on, "运行", "停止"));
   const lockText = boolText(data.lock_open, "已开", "已锁");
   const cameraText = boolText(data.camera_online, "在线", "离线");
 
-  stateEls.connection.textContent = data.hardware_online ? "硬件在线" : "后端在线";
+  stateEls.connection.textContent = data.uno?.ready
+    ? "新板已连接 · 旧板状态未确认"
+    : data.hardware_online ? "硬件在线" : "后端在线";
   stateEls.connection.classList.remove("offline");
   animateTextChange(stateEls.temperature, temperatureText);
   animateTextChange(stateEls.door, doorText);
@@ -673,7 +679,7 @@ async function sendCommand(target, action, value = null) {
     body: JSON.stringify(payload),
   });
   if (stateEls.feedback) {
-    stateEls.feedback.textContent = `命令已入队 #${data.command_id}`;
+    stateEls.feedback.textContent = `${data.message || "命令已入队"} #${data.command_id}`;
     pulseFeedback(stateEls.feedback);
   }
   return data;
@@ -685,9 +691,9 @@ async function toggleSimpleDevice(kind) {
   const field = fieldMap[kind];
   const current = Boolean(localOverrides[field] ?? statusCards[kind]?.classList.contains("is-active"));
   const next = !current;
-  localOverrides[field] = next ? 1 : 0;
-  applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
   await sendCommand(kind, next ? actionMap[kind][0] : actionMap[kind][1]);
+  if (kind !== "door") localOverrides[field] = next ? 1 : 0;
+  applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
 }
 
 function openModal(type) {
@@ -705,74 +711,58 @@ function closeModal() {
 }
 
 function lightModalHtml() {
-  const current = Number(localOverrides.light_level ?? 55);
   return `
     <div class="option-grid">
-      <button class="option-card" data-light-mode="relax" data-light-level="60"><strong>休闲</strong><span>亮度 60%</span></button>
-      <button class="option-card" data-light-mode="reading" data-light-level="80"><strong>阅读</strong><span>亮度 80%</span></button>
-      <button class="option-card" data-light-mode="office" data-light-level="95"><strong>电脑办公</strong><span>亮度 95%</span></button>
-      <button class="option-card" data-light-mode="custom"><strong>自定义</strong><span>使用下方滑杆</span></button>
+      <button class="option-card" data-light-command="on"><strong>打开</strong><span>发送 LO 到新板</span></button>
+      <button class="option-card" data-light-command="off"><strong>关闭</strong><span>发送 LC 到新板</span></button>
     </div>
-    <label class="modal-slider">
-      <input id="modalLightLevel" type="range" min="0" max="100" value="${current}" />
-      <output id="modalLightOutput">${current}</output>
-    </label>
-    <button class="primary modal-confirm" data-close-modal>确认设定</button>
+    <p class="modal-note">灯环固件当前为固定亮度，只支持开关。旧板没有返回线，页面显示的是命令投递状态。</p>
   `;
 }
 
 function fanModalHtml() {
-  const current = Number(localOverrides.fan_level ?? (localOverrides.fan_on ? 1 : 0));
   return `
     <div class="option-grid">
-      ${[0, 1, 2, 3].map((level) => `
-        <button class="option-card ${current === level ? "active" : ""}" data-fan-level="${level}">
-          <strong>${level} 档</strong><span>${level === 0 ? "停止" : `风量 ${level}`}</span>
-        </button>
-      `).join("")}
+      <button class="option-card" data-fan-command="on"><strong>打开</strong><span>发送 FO 到新板</span></button>
+      <button class="option-card" data-fan-command="off"><strong>关闭</strong><span>发送 FC 到新板</span></button>
     </div>
+    <p class="modal-note">当前仅接入手动开关，暂不启用自动模式和挡位控制。</p>
   `;
 }
 
 function bindModalActions(type) {
   if (type === "light") {
-    const slider = qs("#modalLightLevel");
-    const output = qs("#modalLightOutput");
-    slider.addEventListener("input", () => {
-      output.textContent = slider.value;
-    });
-    qsa("[data-light-mode]").forEach((button) => {
+    qsa("[data-light-command]").forEach((button) => {
       button.addEventListener("click", async () => {
-        qsa("[data-light-mode]").forEach((item) => item.classList.remove("active"));
-        button.classList.add("active");
-        const level = Number(button.dataset.lightLevel || slider.value);
-        slider.value = level;
-        output.textContent = level;
-        localOverrides.light_level = level;
-        applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
-        await sendCommand("light", "set_mode", { mode: button.dataset.lightMode, brightness: level });
+        qsa("[data-light-command]").forEach((item) => { item.disabled = true; });
+        if (stateEls.feedback) stateEls.feedback.textContent = "正在发送到 COM9...";
+        try {
+          const action = button.dataset.lightCommand;
+          await sendCommand("light", action);
+          applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
+        } catch (error) {
+          if (stateEls.feedback) stateEls.feedback.textContent = error.message;
+        } finally {
+          qsa("[data-light-command]").forEach((item) => { item.disabled = false; });
+        }
       });
     });
-    slider.addEventListener("change", async () => {
-      const level = Number(slider.value);
-      localOverrides.light_level = level;
-      applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
-      await sendCommand("light", "set_brightness", level);
-    });
-    qs(".modal-confirm")?.addEventListener("click", closeModal);
     return;
   }
 
-  qsa("[data-fan-level]").forEach((button) => {
+  qsa("[data-fan-command]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const level = Number(button.dataset.fanLevel);
-      qsa("[data-fan-level]").forEach((item) => item.classList.remove("active"));
-      button.classList.add("active");
-      localOverrides.fan_level = level;
-      localOverrides.fan_on = level > 0 ? 1 : 0;
-      applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
-      await sendCommand("fan", "set_level", level);
-      closeModal();
+      qsa("[data-fan-command]").forEach((item) => { item.disabled = true; });
+      if (stateEls.feedback) stateEls.feedback.textContent = "正在发送到 COM9...";
+      try {
+        const action = button.dataset.fanCommand;
+        await sendCommand("fan", action);
+        applyStatusToUi(mergedStatus(await api("/api/status").catch(() => ({}))));
+      } catch (error) {
+        if (stateEls.feedback) stateEls.feedback.textContent = error.message;
+      } finally {
+        qsa("[data-fan-command]").forEach((item) => { item.disabled = false; });
+      }
     });
   });
 }
