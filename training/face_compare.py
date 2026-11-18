@@ -64,15 +64,27 @@ class InsightFaceRecognizer:
         self.app.prepare(ctx_id=-1, det_size=(det_size, det_size))
 
     def get_largest_face(self, image_path: Path) -> dict[str, Any]:
-        image = load_image(image_path)
+        return self.face_from_image(load_image(image_path), str(image_path))
+
+    def face_from_image(self, image: np.ndarray, source: str) -> dict[str, Any]:
         faces = self.app.get(image)
         if not faces:
-            raise ValueError(f"no face detected: {image_path}")
+            # Tight portraits can fill the detector's field of view. Add context
+            # for one retry, then map its geometry back to the original image.
+            height, width = image.shape[:2]
+            top, left = height // 2, width // 2
+            padded = cv2.copyMakeBorder(image, top, top, left, left, cv2.BORDER_CONSTANT, value=(127, 127, 127))
+            faces = self.app.get(padded)
+            for detected in faces:
+                detected.bbox -= np.array([left, top, left, top], dtype=np.float32)
+                detected.kps -= np.array([left, top], dtype=np.float32)
+        if not faces:
+            raise ValueError(f"no face detected: {source}")
         face = max(faces, key=lambda item: float((item.bbox[2] - item.bbox[0]) * (item.bbox[3] - item.bbox[1])))
         embedding = np.asarray(face.normed_embedding, dtype=np.float32)
         norm = np.linalg.norm(embedding)
         if norm == 0:
-            raise ValueError(f"zero face embedding: {image_path}")
+            raise ValueError(f"zero face embedding: {source}")
         embedding = embedding / norm
         return {
             "image": image,

@@ -1,0 +1,4 @@
+#pragma once
+// Copy to ap_config.h and replace this directive with:
+// constexpr char apPassword[] = "your own 8-63 character passphrase";
+#error "Set a local Wi-Fi hotspot password in ap_config.h before building"

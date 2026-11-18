@@ -35,6 +35,33 @@ def _min_margin() -> float:
         return DEFAULT_FACE_MIN_MARGIN
 
 
+def verify_camera_frame(data, references):
+    import cv2
+    import numpy as np
+
+    training_dir = str(_project_root() / "training")
+    if training_dir not in sys.path:
+        sys.path.insert(0, training_dir)
+    from face_service import get_recognizer, match_references
+
+    model = os.environ.get("FACE_MODEL_PACK", "buffalo_l")
+    size = int(os.environ.get("FACE_DET_SIZE", "640"))
+    image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("invalid camera JPEG")
+    try:
+        face = get_recognizer(model, size).face_from_image(image, "camera")
+    except ValueError as exc:
+        if str(exc).startswith("no face detected:"):
+            return {"state": "no_face"}
+        raise
+    result = match_references(face, references, _threshold(), _min_margin(), model, size)
+    if result["best_match"] is None:
+        return {"state": "invalid_gallery"}
+    return {"state": "matched" if result["matched"] else "unknown",
+            "identity": result["user_id"], "score": result["score"]}
+
+
 def _try_training_face_service(image_path: str, threshold: float, min_margin: float) -> dict[str, Any] | None:
     training_dir = _project_root() / "training"
     if str(training_dir) not in sys.path:

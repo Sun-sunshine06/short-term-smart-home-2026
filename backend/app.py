@@ -25,10 +25,12 @@ except ImportError:
 try:
     from hardware.uno_serial import UnoBridgeError, UnoBridgeUnavailable, UnoCommandRejected, get_uno_bridge
     from vision.face_adapter import verify_face
+    from vision.live_camera import register_live_camera
     from vision.yolo_adapter import detect_image
 except ImportError:
     from backend.hardware.uno_serial import UnoBridgeError, UnoBridgeUnavailable, UnoCommandRejected, get_uno_bridge
     from backend.vision.face_adapter import verify_face
+    from backend.vision.live_camera import register_live_camera
     from backend.vision.yolo_adapter import detect_image
 
 
@@ -717,6 +719,15 @@ def add_gallery_image(
 
 def create_app(uno_bridge_override: Any | None = None) -> Flask:
     app = Flask(__name__)
+    def authorized_references():
+        with closing(connect_db()) as conn:
+            rows = conn.execute("""
+                SELECT u.identity, u.name, i.image_path
+                FROM authorized_users u JOIN face_gallery_images i ON i.user_id = u.id
+                WHERE u.active = 1
+            """).fetchall()
+        return [(r["identity"], r["name"], Path(r["image_path"])) for r in rows]
+
     init_db()
     sidecar = SidecarForwarder.from_env()
     app.extensions["sidecar"] = sidecar
@@ -906,6 +917,9 @@ def create_app(uno_bridge_override: Any | None = None) -> Flask:
     @app.post("/api/device/control")
     def device_control():
         payload = request.get_json(silent=True) or {}
+        return dispatch_device_control(payload)
+
+    def dispatch_device_control(payload):
         target = str(payload.get("target", "")).strip()
         action = str(payload.get("action", "")).strip()
         value = payload.get("value")
@@ -982,6 +996,19 @@ def create_app(uno_bridge_override: Any | None = None) -> Flask:
                 "uno": uno_bridge.snapshot(),
             }
         )
+
+    def open_for_live_face(result):
+        response = app.make_response(dispatch_device_control({
+            "target": "door", "action": "open", "value": {"source": "live_face"}
+        })).get_json()
+        create_face_record({
+            "matched": True, "user_id": result["identity"], "user_name": result["name"],
+            "score": result["score"], "engine": "insightface", "trigger": "live_face",
+            "command_id": response["command_id"], "delivery_status": response["status"]
+        })
+        return {"status": response["status"], "command_id": response["command_id"]}
+
+    register_live_camera(app, os.environ.get("CAMERA_USB_PORT"), authorized_references, open_for_live_face)
 
     @app.get("/api/device/commands")
     def device_commands():

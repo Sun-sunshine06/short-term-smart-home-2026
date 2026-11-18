@@ -36,3 +36,7 @@ desktop.ini
 # Training dataset (excluded from repo)
 training/data/
 
+hardware/esp32cam/usb_camera/.pio/
+hardware/esp32cam/usb_camera/src/ap_config.h
+training/face_gallery/
+training/samples/face_compare/微信图片_*.jpg

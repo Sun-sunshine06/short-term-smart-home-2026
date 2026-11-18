@@ -59,3 +59,18 @@ cd ..
 5. 摄像头、模型和授权图库按各自部署说明配置。前端构建成功不表示视觉环境已就绪。现场验证香橙派断开和恢复时电脑主流程仍可工作。
 
 不要复制 .venv、node_modules、个人绝对路径、运行数据库和缓存；按源码与锁文件重建环境。实机验收仍需同学完成。
+
+## USB 摄像头直播与人脸开门
+
+在 local/sidecar.env 中设置 CAMERA_USB_PORT 为本机 ESP32-CAM 的实际串口。UNO_PORT 填控制板的串口。ESP32-CAM 以 921600 波特率传输 JPEG，UNO 控制桥使用 115200。电脑可以保持原有 Wi-Fi 连接。
+
+已运行高速 USB 固件的板可以直接使用。对应固件位于 hardware/esp32cam/usb_camera，适用 ESP32-CAM AI Thinker 引脚布局。在该目录中，将 src/ap_config.h.example 复制为 src/ap_config.h，按文件说明设置自己的热点密码，然后使用 PlatformIO 构建。串口监视器在后端运行时应关闭。
+
+在仓库根目录准备推理环境，启动脚本会在配置 CAMERA_USB_PORT 后使用它：
+
+```powershell
+uv venv --python 3.12 local/vision-env
+uv pip install --python local/vision-env/Scripts/python.exe -r backend/requirements.txt -r training/requirements.txt
+```
+
+按 training/README.md 准备 InsightFace buffalo_l 模型。构建前端并启动后端后，进入真实模式。视觉识别页提供直播和 YOLO 开关；门禁与人员页可登记本人基准照片。停留在门禁页时，实时匹配通过会发出开门指令，并记录通行。镜头连续约两秒无人后可再次触发。投递结果由页面显示，门的位置需现场核对。每台电脑单独登记授权人员。

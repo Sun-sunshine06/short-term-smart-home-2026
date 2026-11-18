@@ -35,15 +35,25 @@ def verify_face(
     gallery_path = Path(gallery_dir)
     probe_face = recognizer.get_largest_face(probe_path)
 
-    candidates: list[dict[str, Any]] = []
+    return match_references(probe_face, iter_gallery_images(gallery_path), threshold, min_margin, model_pack, det_size)
+
+
+@lru_cache(maxsize=128)
+def reference_embedding(path, modified_ns, size, model_pack, det_size):
+    return get_recognizer(model_pack, det_size).get_largest_face(path)["embedding"]
+
+
+def match_references(probe_face, references, threshold, min_margin, model_pack, det_size):
+    candidates = []
     skipped = []
-    for identity, ref_path in iter_gallery_images(gallery_path):
+    for identity, ref_path in references:
         try:
-            ref_face = recognizer.get_largest_face(ref_path)
-        except ValueError as exc:
+            stat = ref_path.stat()
+            embedding = reference_embedding(ref_path, stat.st_mtime_ns, stat.st_size, model_pack, det_size)
+        except (ValueError, OSError) as exc:
             skipped.append({"identity": identity, "image": str(ref_path), "reason": str(exc)})
             continue
-        score = cosine(probe_face["embedding"], ref_face["embedding"])
+        score = cosine(probe_face["embedding"], embedding)
         candidate = {
             "user_id": identity,
             "name": identity,
